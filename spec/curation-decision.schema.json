@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/curation-decision.schema.json",
+  "title": "AI-CONTEXT Review Decision",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "candidate_id", "candidate_sha256", "revision", "previous_decision_id", "decision", "actor", "conflict_resolution", "resolved_conflict_ids", "supersede_memory_ids", "notes", "created_at"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^decision\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/REVIEW-DECISION"},
+    "schema_version": {"const": "0.1.0"},
+    "candidate_id": {"type": "string", "pattern": "^candidate\\.sha256:[0-9a-f]{64}$"},
+    "candidate_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "previous_decision_id": {"type": ["string", "null"], "pattern": "^decision\\.sha256:[0-9a-f]{64}$"},
+    "decision": {"enum": ["approve", "reject", "revise"]},
+    "actor": {"type": "object", "required": ["type", "label"], "properties": {"type": {"enum": ["human", "policy"]}, "label": {"type": "string", "minLength": 1}}, "additionalProperties": false},
+    "conflict_resolution": {"enum": ["none", "coexist", "supersede_existing", "manual_merge"]},
+    "resolved_conflict_ids": {"type": "array", "items": {"type": "string", "pattern": "^conflict\\.sha256:[0-9a-f]{64}$"}, "uniqueItems": true},
+    "supersede_memory_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "notes": {"type": "string"},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}
