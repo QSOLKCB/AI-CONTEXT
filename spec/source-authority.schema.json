@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/source-authority.schema.json",
+  "title": "AI-CONTEXT Source Evidence Authority",
+  "oneOf": [
+    {"type": "object", "required": ["class", "rank", "domain"], "properties": {"class": {"const": "git_clean_head"}, "rank": {"const": 95}, "domain": {"const": "source_evidence"}}, "additionalProperties": false},
+    {"type": "object", "required": ["class", "rank", "domain"], "properties": {"class": {"const": "git_dirty_worktree"}, "rank": {"const": 85}, "domain": {"const": "source_evidence"}}, "additionalProperties": false},
+    {"type": "object", "required": ["class", "rank", "domain"], "properties": {"class": {"const": "source_tree_snapshot"}, "rank": {"const": 70}, "domain": {"const": "source_evidence"}}, "additionalProperties": false},
+    {"type": "object", "required": ["class", "rank", "domain"], "properties": {"class": {"const": "email_archive_message"}, "rank": {"const": 65}, "domain": {"const": "source_evidence"}}, "additionalProperties": false},
+    {"type": "object", "required": ["class", "rank", "domain"], "properties": {"class": {"const": "drive_export_snapshot"}, "rank": {"const": 60}, "domain": {"const": "source_evidence"}}, "additionalProperties": false},
+    {"type": "object", "required": ["class", "rank", "domain"], "properties": {"class": {"const": "document_snapshot"}, "rank": {"const": 50}, "domain": {"const": "source_evidence"}}, "additionalProperties": false}
+  ]
+}

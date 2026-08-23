@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/content-object.schema.json",
+  "title": "AI-CONTEXT Content Object",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "content_kind", "sha256", "byte_length"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^content\\.(?:text|binary)\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/CONTENT"},
+    "schema_version": {"const": "0.1.0"},
+    "content_kind": {"enum": ["text", "binary_ref"]},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "byte_length": {"type": "integer", "minimum": 0},
+    "text": {"type": "string"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"content_kind": {"const": "text"}}, "required": ["content_kind"]},
+      "then": {
+        "required": ["text"],
+        "properties": {"id": {"pattern": "^content\\.text\\.sha256:[0-9a-f]{64}$"}}
+      },
+      "else": {
+        "not": {"required": ["text"]},
+        "properties": {"id": {"pattern": "^content\\.binary\\.sha256:[0-9a-f]{64}$"}}
+      }
+    }
+  ],
+  "additionalProperties": false
+}
