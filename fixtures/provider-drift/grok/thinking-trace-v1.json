@@ -1,0 +1,23 @@
+{
+  "conversations": [
+    {
+      "conversation": {
+        "id": "grok-conv-thinking",
+        "title": "Synthetic Grok thinking-trace layout"
+      },
+      "responses": [
+        {
+          "response": {
+            "_id": "grok-thinking-msg-1",
+            "sender": "assistant",
+            "message": "Visible synthetic answer.",
+            "thinking_trace": "synthetic private reasoning that must not enter staging",
+            "agent_thinking_traces": [
+              {"thinking_trace": "synthetic trace fragment"}
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
