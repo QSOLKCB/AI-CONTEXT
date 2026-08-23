@@ -23,9 +23,13 @@ jobs:
           tools/ai_context.py
           tools/provider_adapters.py
           tools/provider_import.py
+          tools/evidence_adapters.py
+          tools/evidence_import.py
+          tools/validate_evidence.py
           tests/test_ai_context.py
           tests/test_phase2_conformance.py
           tests/test_schema_conformance.py
           tests/test_phase3_provider_adapters.py
-      - name: Unit, security, schema, and provider-drift tests
+          tests/test_phase4_evidence.py
+      - name: Unit, security, schema, provider-drift, and evidence tests
         run: python -m unittest discover -s tests -v
