@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/curation-policy.schema.json",
+  "title": "AI-CONTEXT Curation Policy",
+  "type": "object",
+  "required": ["protocol", "schema_version", "default_retention_days", "record_type_retention_days", "allow_policy_auto_expire"],
+  "properties": {
+    "protocol": {"const": "AI-CONTEXT/CURATION-POLICY"},
+    "schema_version": {"const": "0.1.0"},
+    "default_retention_days": {"type": ["integer", "null"], "minimum": 0},
+    "record_type_retention_days": {
+      "type": "object",
+      "propertyNames": {"enum": ["fact", "preference", "project_state", "decision", "claim", "hypothesis", "instruction", "relationship", "publication", "event", "environment", "provenance_policy"]},
+      "additionalProperties": {"type": ["integer", "null"], "minimum": 0}
+    },
+    "allow_policy_auto_expire": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}
