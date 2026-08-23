@@ -114,6 +114,7 @@ DELETED != MERELY HIDDEN
 spec/                 protocol and JSON schemas
 docs/                 architecture, threat model and format notes
 tools/                dependency-light reference CLI
+fixtures/conformance/ standalone valid/invalid protocol fixtures
 examples/             synthetic examples only
 tests/                conformance and security tests
 workspace.example/    safe example private-workspace structure
@@ -171,9 +172,85 @@ AI-CONTEXT extracts the transferable ideas:
 
 It intentionally does **not** inherit QSOL-specific identity, ontology, project names, cultural artifacts, or private data.
 
+## Using AI-CONTEXT with QSOL-SUBSTRATE
+
+[`QSOLKCB/QSOL-SUBSTRATE`](https://github.com/QSOLKCB/QSOL-SUBSTRATE) is a useful optional downstream companion when a project needs substrate-style delivery machinery such as model adapters, tool-less capsules, deterministic vector projections, model-specific prefix/latent experiments, or model-behaviour probes.
+
+The scope split is intentional:
+
+```text
+AI-CONTEXT
+  private ingestion
+  provenance + receipts
+  curation / approval
+  canonical personal memory
+  privacy / lifecycle policy
+  selective task bundles
+        |
+        | explicit approved handoff only
+        v
+QSOL-SUBSTRATE-style downstream layer
+  transport adapters
+  tool-less capsules
+  vector/retrieval projections
+  prefix / latent experiments
+  probe and evaluation machinery
+        |
+        v
+AI / agent / local model / provider
+```
+
+The authority rule is:
+
+> **AI-CONTEXT CANONICAL MEMORY > DOWNSTREAM SUBSTRATE PROJECTION**
+
+A downstream adapter, vector index, latent prefix, KV/prefix state, capsule, or probe result is a derived artifact. It may change delivery format or retrieval strategy, but it must not silently rewrite, reclassify, promote, or outrank the canonical AI-CONTEXT records that produced it.
+
+### Recommended handoff
+
+1. Import and curate private material in AI-CONTEXT.
+2. Build the smallest approved bundle for the downstream use case:
+
+   ```bash
+   python3 tools/ai_context.py bundle \
+     ~/my-ai-context \
+     --profile coding \
+     --output /tmp/ai-context-coding.json
+   ```
+
+3. Use a **separate bridge/adapter or private substrate workspace** to map only the approved bundle records into the canonical record layout expected by the substrate implementation.
+4. Run the desired QSOL-SUBSTRATE-derived projection tooling against that downstream substrate snapshot.
+5. Preserve source IDs, sensitivity, epistemic state, provenance references, AI-CONTEXT bundle hash, and substrate/projection hashes in the bridge receipt so the path can be audited in both directions.
+
+### Important compatibility note
+
+QSOL-SUBSTRATE is currently a **QSOL-specific public substrate implementation**, not a generic drop-in AI-CONTEXT backend. Its existing builders expect the QSOL-SUBSTRATE canonical repository layout; there is intentionally no fake `ai-context bundle -> qsol-substrate` one-command converter in this repository.
+
+For private personal context, do **not** point QSOL-SUBSTRATE's public-export workflow at an AI-CONTEXT vault, staging area, or canonical store and assume that makes the result safe. Use a private fork/worktree or purpose-built bridge with an explicit allowlist and privacy policy. Raw vault material and staging observations should never cross this boundary automatically.
+
+The reusable QSOL-SUBSTRATE architecture already demonstrates downstream patterns for:
+
+```bash
+python tools/validate_substrate.py --json-report validation-report.json
+python tools/fingerprint_substrate.py --output substrate-fingerprint.json
+python tools/build_adapters.py --source-commit "$(git rev-parse HEAD)" --output dist/adapters
+python tools/build_toolless.py --source-commit "$(git rev-parse HEAD)" --output dist/toolless
+python tools/build_vectors.py --source-commit "$(git rev-parse HEAD)" --output dist/vectors
+python tools/build_projections.py --source-commit "$(git rev-parse HEAD)" --output dist/projections
+python tools/build_probes.py --source-commit "$(git rev-parse HEAD)" --output dist/probes
+```
+
+Those commands belong to QSOL-SUBSTRATE and operate on its substrate format. AI-CONTEXT deliberately does not reimplement them. This keeps the projects cleanly separated:
+
+```text
+AI-CONTEXT = private memory protocol and authority
+QSOL-SUBSTRATE = downstream substrate/projection technology
+bridge = explicit policy-controlled translation boundary
+```
+
 ## Status
 
-Early reference implementation. The protocol should be treated as experimental until the conformance suite and migration rules reach v1.0.
+Early reference implementation. Phases 0–2 are complete; the protocol should still be treated as experimental until the migration and broader interoperability rules reach v1.0.
 
 See [`ROADMAP.md`](ROADMAP.md) for the staged implementation plan.
 
