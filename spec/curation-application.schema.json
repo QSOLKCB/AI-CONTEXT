@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/curation-application.schema.json",
+  "title": "AI-CONTEXT Candidate Application Receipt",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "candidate_id", "decision_id", "memory_id", "memory_sha256", "semantic_key", "source_refs", "actor", "applied_at"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^application\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/APPLICATION"},
+    "schema_version": {"const": "0.1.0"},
+    "candidate_id": {"type": "string", "pattern": "^candidate\\.sha256:[0-9a-f]{64}$"},
+    "decision_id": {"type": "string", "pattern": "^decision\\.sha256:[0-9a-f]{64}$"},
+    "memory_id": {"type": "string", "minLength": 1},
+    "memory_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "semantic_key": {"type": ["string", "null"]},
+    "source_refs": {"type": "array", "items": {"type": "string", "pattern": "^obs\\.sha256:[0-9a-f]{64}$"}, "uniqueItems": true},
+    "actor": {"type": "object", "required": ["type", "label"], "properties": {"type": {"enum": ["human", "policy"]}, "label": {"type": "string", "minLength": 1}}, "additionalProperties": false},
+    "applied_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}

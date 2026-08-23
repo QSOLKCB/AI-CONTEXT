@@ -8,7 +8,8 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CLI = ROOT / "tools" / "ai_context.py"
+# Historical Phase 1 behavior is tested against the preserved compatibility module.
+CLI = ROOT / "tools" / "ai_context_legacy.py"
 
 
 def run_cli(*args, expect=0):

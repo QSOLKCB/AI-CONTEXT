@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/curation-conflict.schema.json",
+  "title": "AI-CONTEXT Candidate Conflict",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "candidate_id", "memory_id", "semantic_key", "candidate_content_sha256", "memory_content_sha256", "created_at"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^conflict\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/CONFLICT"},
+    "schema_version": {"const": "0.1.0"},
+    "candidate_id": {"type": "string", "pattern": "^candidate\\.sha256:[0-9a-f]{64}$"},
+    "memory_id": {"type": "string", "minLength": 1},
+    "semantic_key": {"type": "string", "minLength": 1},
+    "candidate_content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "memory_content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}
