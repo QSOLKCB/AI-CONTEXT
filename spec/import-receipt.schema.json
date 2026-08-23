@@ -22,7 +22,12 @@
     "source_type": {"type": "string", "minLength": 1},
     "source_name": {"type": "string"},
     "source_identity_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "requested_adapter": {"enum": ["auto", "repo", "chatgpt", "claude", "generic-json"]},
+    "requested_adapter": {
+      "oneOf": [
+        {"enum": ["auto", "repo", "chatgpt", "claude", "generic-json", "gemini", "grok", "browser-chat"]},
+        {"type": "string", "pattern": "^plugin:[0-9a-f]{64}$"}
+      ]
+    },
     "adapter": {
       "type": "object",
       "required": ["id", "version"],
@@ -32,6 +37,7 @@
       },
       "additionalProperties": false
     },
+    "adapter_layout": {"type": "string", "minLength": 1},
     "parse_status": {"enum": ["exact", "partial", "generic", "failed"]},
     "observation_count": {"type": "integer", "minimum": 0},
     "warnings": {"type": "array", "items": {"type": "string"}},
