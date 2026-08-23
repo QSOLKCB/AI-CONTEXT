@@ -25,7 +25,8 @@
     "requested_adapter": {
       "oneOf": [
         {"enum": ["auto", "repo", "chatgpt", "claude", "generic-json", "gemini", "grok", "browser-chat"]},
-        {"type": "string", "pattern": "^plugin:[0-9a-f]{64}$"}
+        {"type": "string", "pattern": "^plugin:[0-9a-f]{64}$"},
+        {"type": "string", "pattern": "^evidence:(repo|document|drive-export|email):snapshot\\.sha256:[0-9a-f]{64}$"}
       ]
     },
     "adapter": {
@@ -41,7 +42,9 @@
     "parse_status": {"enum": ["exact", "partial", "generic", "failed"]},
     "observation_count": {"type": "integer", "minimum": 0},
     "warnings": {"type": "array", "items": {"type": "string"}},
-    "imported_at": {"type": ["string", "null"], "format": "date-time"}
+    "imported_at": {"type": ["string", "null"], "format": "date-time"},
+    "source_snapshot_id": {"type": "string", "pattern": "^snapshot\\.sha256:[0-9a-f]{64}$"},
+    "content_object_count": {"type": "integer", "minimum": 0}
   },
   "additionalProperties": false
 }
