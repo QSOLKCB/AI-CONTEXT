@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -42,7 +43,9 @@ class AIContextTests(unittest.TestCase):
         self.assertEqual(result["parse_status"], "generic")
         self.assertEqual(result["observations_total"], 1)
 
-        observation = json.loads((self.workspace / "staging" / "observations.jsonl").read_text(encoding="utf-8").strip())
+        observation = json.loads(
+            (self.workspace / "staging" / "observations.jsonl").read_text(encoding="utf-8").strip()
+        )
         candidate = self.root / "candidate.json"
         candidate.write_text(json.dumps({
             "record_type": "project_state",
@@ -65,6 +68,16 @@ class AIContextTests(unittest.TestCase):
         self.assertEqual(bundle1.read_bytes(), bundle2.read_bytes())
         payload = json.loads(bundle1.read_text(encoding="utf-8"))
         self.assertEqual(len(payload["records"]), 1)
+
+    def test_duplicate_import_is_idempotent(self):
+        source = self.root / "notes.md"
+        source.write_text("same source\n", encoding="utf-8")
+        first = json.loads(run_cli("import", self.workspace, source).stdout)
+        second = json.loads(run_cli("import", self.workspace, source).stdout)
+        self.assertEqual(first["receipt_id"], second["receipt_id"])
+        self.assertEqual(second["observations_appended"], 0)
+        self.assertFalse(second["receipt_appended"])
+        run_cli("validate", self.workspace)
 
     def test_user_asserted_memory_can_be_source_free_under_default_policy(self):
         candidate = self.root / "preference.json"
@@ -130,6 +143,15 @@ class AIContextTests(unittest.TestCase):
         self.assertEqual(result["observations_total"], 2)
         self.assertFalse((self.workspace / "memory" / "records.jsonl").exists())
 
+    def test_explicit_provider_adapter_fails_on_wrong_zip_layout(self):
+        export = self.root / "not-chatgpt.zip"
+        with zipfile.ZipFile(export, "w") as archive:
+            archive.writestr("notes.json", json.dumps({"hello": "world"}))
+        failed = run_cli(
+            "import", self.workspace, export, "--adapter", "chatgpt", expect=2
+        )
+        self.assertIn("expected conversations.json", failed.stderr)
+
     def test_claude_style_export_is_detected(self):
         export = self.root / "claude.json"
         export.write_text(json.dumps([{
@@ -162,6 +184,18 @@ class AIContextTests(unittest.TestCase):
         result = json.loads(run_cli("import", self.workspace, repo, "--adapter", "repo").stdout)
         self.assertEqual(result["source_type"], "git-repository")
         self.assertEqual(result["observations_total"], 1)
+
+    @unittest.skipUnless(hasattr(os, "symlink"), "symlinks unavailable")
+    def test_repo_import_does_not_follow_symlink_outside_tree(self):
+        outside = self.root / "outside.md"
+        outside.write_text("must not be imported", encoding="utf-8")
+        repo = self.root / "repo"
+        repo.mkdir()
+        (repo / "README.md").write_text("safe", encoding="utf-8")
+        os.symlink(outside, repo / "outside-link.md")
+        result = json.loads(run_cli("import", self.workspace, repo, "--adapter", "repo").stdout)
+        self.assertEqual(result["observations_total"], 1)
+        self.assertTrue(any("symlink" in warning for warning in result["warnings"]))
 
 
 if __name__ == "__main__":
