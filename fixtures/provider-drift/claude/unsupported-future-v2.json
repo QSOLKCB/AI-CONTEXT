@@ -1,0 +1,8 @@
+[
+  {
+    "conversation_id": "claude-future-1",
+    "messages": [
+      {"role": "human", "content": "This intentionally does not match chat_messages-v1."}
+    ]
+  }
+]
