@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Dependency-light AI-CONTEXT reference CLI.
 
-This implementation deliberately separates imported observations from canonical memory.
-It is a reference workflow, not a hardened encrypted vault.
+Imported material becomes provenance-preserving observations first. It does not become
+canonical memory until an explicit promotion step succeeds under workspace policy.
 """
 
 from __future__ import annotations
@@ -10,9 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
-import shutil
 import sys
 import zipfile
 from datetime import datetime, timezone
@@ -21,6 +19,7 @@ from typing import Any, Iterable
 
 PROTOCOL_VERSION = "0.1.0"
 ADAPTER_VERSION = "0.1.0"
+
 TEXT_EXTENSIONS = {
     ".md", ".markdown", ".txt", ".rst", ".json", ".jsonl", ".yaml", ".yml",
     ".toml", ".ini", ".cfg", ".csv", ".tsv", ".py", ".rs", ".js", ".mjs",
@@ -28,6 +27,7 @@ TEXT_EXTENSIONS = {
     ".fish", ".sql", ".xml", ".go", ".java", ".kt", ".swift", ".c", ".h",
     ".cpp", ".hpp", ".wgsl", ".glsl",
 }
+
 DEFAULT_POLICY = {
     "protocol": "AI-CONTEXT/POLICY",
     "schema_version": PROTOCOL_VERSION,
@@ -35,12 +35,13 @@ DEFAULT_POLICY = {
     "forbid_secret_memory": True,
     "allow_source_free_user_assertions": True,
     "max_archive_members": 5000,
-    "max_archive_member_bytes": 8 * 1024 * 1024,
-    "max_archive_total_bytes": 128 * 1024 * 1024,
+    "max_archive_member_bytes": 64 * 1024 * 1024,
+    "max_archive_total_bytes": 512 * 1024 * 1024,
     "max_repo_files": 10000,
     "max_repo_file_bytes": 4 * 1024 * 1024,
     "max_repo_total_bytes": 256 * 1024 * 1024,
 }
+
 SENSITIVITY_RANK = {"public": 0, "private": 1, "restricted": 2, "secret": 3}
 RECORD_TYPES = {
     "fact", "preference", "project_state", "decision", "claim", "hypothesis",
@@ -95,7 +96,11 @@ def load_json(path: Path) -> Any:
 
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+    path.write_text(
+        json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -143,6 +148,8 @@ def load_policy(workspace: Path) -> dict[str, Any]:
     policy = load_json(policy_path)
     if not isinstance(policy, dict) or policy.get("protocol") != "AI-CONTEXT/POLICY":
         raise ContextError("invalid workspace policy")
+    if policy.get("schema_version") != PROTOCOL_VERSION:
+        raise ContextError("unsupported workspace policy schema version")
     return {**DEFAULT_POLICY, **policy}
 
 
@@ -176,7 +183,8 @@ def cmd_init(args: argparse.Namespace) -> None:
         newline="\n",
     )
     (workspace / "README.txt").write_text(
-        "PRIVATE AI-CONTEXT WORKSPACE\n\nDo not publish this directory. Raw imports are evidence, not canonical memory.\n",
+        "PRIVATE AI-CONTEXT WORKSPACE\n\n"
+        "Do not publish this directory. Raw imports are evidence, not canonical memory.\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -190,14 +198,16 @@ def safe_zip_infos(archive: zipfile.ZipFile, policy: dict[str, Any]) -> list[zip
     total = 0
     safe: list[zipfile.ZipInfo] = []
     for info in infos:
-        name = info.filename.replace("\\", "/")
-        pure = PurePosixPath(name)
+        normalized = info.filename.replace("\\", "/")
+        pure = PurePosixPath(normalized)
         if pure.is_absolute() or ".." in pure.parts:
             raise ContextError(f"unsafe archive path: {info.filename}")
         if info.is_dir():
             continue
         if info.file_size > int(policy["max_archive_member_bytes"]):
-            raise ContextError(f"archive member too large: {info.filename}")
+            raise ContextError(
+                f"archive member too large: {info.filename}; adjust private workspace policy only if intentional"
+            )
         total += info.file_size
         if total > int(policy["max_archive_total_bytes"]):
             raise ContextError("archive expanded-byte limit exceeded")
@@ -210,11 +220,13 @@ def source_identity(path: Path, policy: dict[str, Any]) -> str:
         return hash_file(path)
     if not path.is_dir():
         raise ContextError(f"source does not exist: {path}")
+
     digest = hashlib.sha256()
     count = 0
     total = 0
     for child in sorted(path.rglob("*"), key=lambda p: p.relative_to(path).as_posix()):
-        if not child.is_file() or ".git" in child.relative_to(path).parts:
+        rel_parts = child.relative_to(path).parts
+        if child.is_symlink() or ".git" in rel_parts or not child.is_file():
             continue
         count += 1
         if count > int(policy["max_repo_files"]):
@@ -234,8 +246,16 @@ def source_identity(path: Path, policy: dict[str, Any]) -> str:
     return digest.hexdigest()
 
 
-def observation(receipt_id: str, kind: str, content: dict[str, Any], *, source_local_id: str | None = None,
-                actor: str | None = None, timestamp: str | None = None, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+def observation(
+    receipt_id: str,
+    kind: str,
+    content: dict[str, Any],
+    *,
+    source_local_id: str | None = None,
+    actor: str | None = None,
+    timestamp: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     content_hash = sha256_bytes(canonical_bytes(content))
     core = {
         "protocol": "AI-CONTEXT/OBSERVATION",
@@ -357,7 +377,12 @@ def parse_json_value(value: Any, receipt_id: str, source_local_id: str) -> list[
     return [observation(receipt_id, "json_value", {"value": value}, source_local_id=source_local_id)]
 
 
-def parse_text_bytes(data: bytes, receipt_id: str, source_local_id: str, kind: str = "document") -> dict[str, Any] | None:
+def parse_text_bytes(
+    data: bytes,
+    receipt_id: str,
+    source_local_id: str,
+    kind: str = "document",
+) -> dict[str, Any] | None:
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
@@ -366,35 +391,57 @@ def parse_text_bytes(data: bytes, receipt_id: str, source_local_id: str, kind: s
 
 
 def detect_json_adapter(data: Any) -> str:
-    if isinstance(data, list) and any(isinstance(item, dict) and isinstance(item.get("mapping"), dict) for item in data[:10]):
+    if isinstance(data, list) and any(
+        isinstance(item, dict) and isinstance(item.get("mapping"), dict) for item in data[:10]
+    ):
         return "chatgpt"
-    if isinstance(data, list) and any(isinstance(item, dict) and isinstance(item.get("chat_messages"), list) for item in data[:10]):
+    if isinstance(data, list) and any(
+        isinstance(item, dict) and isinstance(item.get("chat_messages"), list) for item in data[:10]
+    ):
         return "claude"
     return "generic-json"
 
 
 def find_zip_conversations(infos: list[zipfile.ZipInfo]) -> zipfile.ZipInfo | None:
-    candidates = [info for info in infos if PurePosixPath(info.filename).name.lower() == "conversations.json"]
-    return sorted(candidates, key=lambda info: (len(PurePosixPath(info.filename).parts), info.filename))[0] if candidates else None
+    candidates = [
+        info for info in infos if PurePosixPath(info.filename).name.lower() == "conversations.json"
+    ]
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda info: (len(PurePosixPath(info.filename).parts), info.filename))[0]
 
 
-def import_zip(path: Path, adapter: str, receipt_id: str, policy: dict[str, Any]) -> tuple[str, str, list[dict[str, Any]], list[str]]:
+def provider_status(warnings: list[str]) -> str:
+    return "partial" if warnings else "exact"
+
+
+def import_zip(
+    path: Path,
+    adapter: str,
+    receipt_id: str,
+    policy: dict[str, Any],
+) -> tuple[str, str, list[dict[str, Any]], list[str]]:
     warnings: list[str] = []
     with zipfile.ZipFile(path) as archive:
         infos = safe_zip_infos(archive, policy)
         conversations = find_zip_conversations(infos)
+
+        if adapter in {"chatgpt", "claude"} and conversations is None:
+            raise ContextError(f"{adapter} adapter expected conversations.json in archive")
+
         if conversations is not None and adapter in {"auto", "chatgpt", "claude"}:
             try:
-                data = json.loads(archive.read(conversations).decode("utf-8"))
+                with archive.open(conversations, "r") as handle:
+                    data = json.load(handle)
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise ContextError(f"cannot parse {conversations.filename}: {exc}") from exc
             chosen = detect_json_adapter(data) if adapter == "auto" else adapter
             if chosen == "chatgpt":
                 obs, extra = parse_chatgpt(data, receipt_id)
-                return "chatgpt-export", "exact", obs, warnings + extra
+                return "chatgpt-export", provider_status(extra), obs, warnings + extra
             if chosen == "claude":
                 obs, extra = parse_claude(data, receipt_id)
-                return "claude-export", "exact", obs, warnings + extra
+                return "claude-export", provider_status(extra), obs, warnings + extra
 
         observations: list[dict[str, Any]] = []
         for info in sorted(infos, key=lambda item: item.filename):
@@ -415,6 +462,7 @@ def import_zip(path: Path, adapter: str, receipt_id: str, policy: dict[str, Any]
                 try:
                     text = raw.decode("utf-8")
                 except UnicodeDecodeError:
+                    warnings.append(f"skipped non-UTF-8 JSONL member: {info.filename}")
                     continue
                 for line_no, line in enumerate(text.splitlines(), 1):
                     if not line.strip():
@@ -429,22 +477,36 @@ def import_zip(path: Path, adapter: str, receipt_id: str, policy: dict[str, Any]
                 item = parse_text_bytes(raw, receipt_id, info.filename)
                 if item:
                     observations.append(item)
+                else:
+                    warnings.append(f"skipped non-UTF-8 text member: {info.filename}")
         return "generic-zip", "generic", observations, warnings
 
 
-def import_file(path: Path, adapter: str, receipt_id: str) -> tuple[str, str, list[dict[str, Any]], list[str]]:
+def import_file(
+    path: Path,
+    adapter: str,
+    receipt_id: str,
+) -> tuple[str, str, list[dict[str, Any]], list[str]]:
     suffix = path.suffix.lower()
     warnings: list[str] = []
+
+    if adapter == "repo":
+        raise ContextError("repo adapter requires a directory")
+
     if suffix == ".json":
         data = load_json(path)
         chosen = detect_json_adapter(data) if adapter == "auto" else adapter
         if chosen == "chatgpt":
-            obs, warnings = parse_chatgpt(data, receipt_id)
-            return "chatgpt-export", "exact", obs, warnings
+            obs, extra = parse_chatgpt(data, receipt_id)
+            return "chatgpt-export", provider_status(extra), obs, extra
         if chosen == "claude":
-            obs, warnings = parse_claude(data, receipt_id)
-            return "claude-export", "exact", obs, warnings
+            obs, extra = parse_claude(data, receipt_id)
+            return "claude-export", provider_status(extra), obs, extra
         return "json", "generic", parse_json_value(data, receipt_id, path.name), warnings
+
+    if adapter in {"chatgpt", "claude", "generic-json"}:
+        raise ContextError(f"{adapter} adapter requires JSON or an appropriate ZIP export")
+
     if suffix == ".jsonl":
         observations: list[dict[str, Any]] = []
         for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -456,6 +518,7 @@ def import_file(path: Path, adapter: str, receipt_id: str) -> tuple[str, str, li
                 raise ContextError(f"invalid JSONL {path}:{line_no}: {exc}") from exc
             observations.extend(parse_json_value(value, receipt_id, f"{path.name}:{line_no}"))
         return "jsonl", "generic", observations, warnings
+
     raw = path.read_bytes()
     item = parse_text_bytes(raw, receipt_id, path.name)
     if item is None:
@@ -463,25 +526,35 @@ def import_file(path: Path, adapter: str, receipt_id: str) -> tuple[str, str, li
     return "document", "generic", [item], warnings
 
 
-def import_repo(path: Path, receipt_id: str, policy: dict[str, Any]) -> tuple[str, str, list[dict[str, Any]], list[str]]:
+def import_repo(
+    path: Path,
+    receipt_id: str,
+    policy: dict[str, Any],
+) -> tuple[str, str, list[dict[str, Any]], list[str]]:
     observations: list[dict[str, Any]] = []
     warnings: list[str] = []
     count = 0
     total = 0
     for child in sorted(path.rglob("*"), key=lambda p: p.relative_to(path).as_posix()):
+        rel = child.relative_to(path).as_posix()
+        if child.is_symlink():
+            warnings.append(f"skipped repository symlink: {rel}")
+            continue
         if not child.is_file():
             continue
         rel_parts = child.relative_to(path).parts
         if ".git" in rel_parts:
             continue
-        if child.suffix.lower() not in TEXT_EXTENSIONS and child.name not in {"LICENSE", "README", "Makefile", "Dockerfile"}:
+        if child.suffix.lower() not in TEXT_EXTENSIONS and child.name not in {
+            "LICENSE", "README", "Makefile", "Dockerfile"
+        }:
             continue
         count += 1
         if count > int(policy["max_repo_files"]):
             raise ContextError("repository text-file limit exceeded")
         size = child.stat().st_size
         if size > int(policy["max_repo_file_bytes"]):
-            warnings.append(f"skipped oversized repository file: {child.relative_to(path).as_posix()}")
+            warnings.append(f"skipped oversized repository file: {rel}")
             continue
         total += size
         if total > int(policy["max_repo_total_bytes"]):
@@ -489,9 +562,8 @@ def import_repo(path: Path, receipt_id: str, policy: dict[str, Any]) -> tuple[st
         try:
             text = child.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            warnings.append(f"skipped non-UTF-8 repository file: {child.relative_to(path).as_posix()}")
+            warnings.append(f"skipped non-UTF-8 repository file: {rel}")
             continue
-        rel = child.relative_to(path).as_posix()
         observations.append(observation(
             receipt_id,
             "repository_file",
@@ -499,7 +571,17 @@ def import_repo(path: Path, receipt_id: str, policy: dict[str, Any]) -> tuple[st
             source_local_id=rel,
             metadata={"repository_root": path.name},
         ))
-    return "git-repository" if (path / ".git").exists() else "source-tree", "exact", observations, warnings
+    source_type = "git-repository" if (path / ".git").exists() else "source-tree"
+    return source_type, provider_status(warnings), observations, warnings
+
+
+def receipt_id_for(source_hash: str, requested_adapter: str) -> str:
+    seed = {
+        "source_sha256": source_hash,
+        "requested_adapter": requested_adapter,
+        "adapter_version": ADAPTER_VERSION,
+    }
+    return f"import.sha256:{sha256_bytes(canonical_bytes(seed))}"
 
 
 def cmd_import(args: argparse.Namespace) -> None:
@@ -509,16 +591,10 @@ def cmd_import(args: argparse.Namespace) -> None:
     source = Path(args.source).expanduser().resolve()
     if not source.exists():
         raise ContextError(f"source does not exist: {source}")
-    source_hash = source_identity(source, policy)
 
+    source_hash = source_identity(source, policy)
     chosen_adapter = args.adapter
-    adapter_seed = {
-        "source_sha256": source_hash,
-        "requested_adapter": chosen_adapter,
-        "adapter_version": ADAPTER_VERSION,
-    }
-    receipt_hash = sha256_bytes(canonical_bytes(adapter_seed))
-    receipt_id = f"import.sha256:{receipt_hash}"
+    receipt_id = receipt_id_for(source_hash, chosen_adapter)
 
     if source.is_dir():
         if chosen_adapter not in {"auto", "repo"}:
@@ -539,17 +615,20 @@ def cmd_import(args: argparse.Namespace) -> None:
         "source_type": source_type,
         "source_name": source.name,
         "source_identity_sha256": source_hash,
+        "requested_adapter": chosen_adapter,
         "adapter": {"id": adapter_id, "version": ADAPTER_VERSION},
         "parse_status": parse_status,
         "observation_count": len(observations),
         "warnings": warnings,
         "imported_at": utc_now(),
     }
-    # imported_at is operational metadata. For idempotent re-imports retain the first receipt.
+
+    # imported_at is operational metadata. Idempotent re-imports preserve the first receipt.
     receipts_path = workspace / "receipts" / "imports.jsonl"
     existing = {row.get("id"): row for row in read_jsonl(receipts_path)}
     if receipt_id in existing:
         receipt = existing[receipt_id]
+
     appended_obs = append_jsonl_unique(workspace / "staging" / "observations.jsonl", observations)
     appended_receipt = append_jsonl_unique(receipts_path, [receipt])
     print(json.dumps({
@@ -568,7 +647,11 @@ def secret_hits(value: Any) -> list[str]:
     return sorted(name for name, pattern in SECRET_PATTERNS.items() if pattern.search(rendered))
 
 
-def validate_memory_record(record: dict[str, Any], workspace: Path, policy: dict[str, Any]) -> None:
+def validate_memory_record(
+    record: dict[str, Any],
+    workspace: Path,
+    policy: dict[str, Any],
+) -> None:
     required = {
         "id", "protocol", "schema_version", "record_type", "content", "sensitivity",
         "epistemic_state", "confidence", "approval", "source_refs", "tags", "lifecycle",
@@ -586,16 +669,26 @@ def validate_memory_record(record: dict[str, Any], workspace: Path, policy: dict
         raise ContextError(f"unknown epistemic_state: {record['epistemic_state']}")
     if record["approval"] not in {"approved", "rejected", "pending"}:
         raise ContextError("invalid approval state")
-    if not isinstance(record["confidence"], (int, float)) or isinstance(record["confidence"], bool) or not 0 <= record["confidence"] <= 1:
+    if (
+        not isinstance(record["confidence"], (int, float))
+        or isinstance(record["confidence"], bool)
+        or not 0 <= record["confidence"] <= 1
+    ):
         raise ContextError("confidence must be a number from 0 to 1")
     if not isinstance(record["content"], dict):
         raise ContextError("content must be an object")
-    if not isinstance(record["source_refs"], list) or not all(isinstance(ref, str) for ref in record["source_refs"]):
+    if not isinstance(record["source_refs"], list) or not all(
+        isinstance(ref, str) for ref in record["source_refs"]
+    ):
         raise ContextError("source_refs must be a string array")
-    if not isinstance(record["tags"], list) or not all(isinstance(tag, str) and tag for tag in record["tags"]):
-        raise ContextError("tags must be a non-empty-string array")
+    if not isinstance(record["tags"], list) or not all(
+        isinstance(tag, str) and tag for tag in record["tags"]
+    ):
+        raise ContextError("tags must be a string array")
     lifecycle = record["lifecycle"]
-    if not isinstance(lifecycle, dict) or lifecycle.get("state") not in {"active", "expired", "superseded", "tombstoned"}:
+    if not isinstance(lifecycle, dict) or lifecycle.get("state") not in {
+        "active", "expired", "superseded", "tombstoned"
+    }:
         raise ContextError("invalid lifecycle state")
     if policy.get("forbid_secret_memory", True) and record["sensitivity"] == "secret":
         raise ContextError("secret-class records are forbidden from canonical AI memory")
@@ -605,7 +698,10 @@ def validate_memory_record(record: dict[str, Any], workspace: Path, policy: dict
 
     observations = {row.get("id") for row in read_jsonl(workspace / "staging" / "observations.jsonl")}
     missing_refs = sorted(set(record["source_refs"]) - observations)
-    source_free_assertion = record["epistemic_state"] == "user_asserted" and policy.get("allow_source_free_user_assertions", True)
+    source_free_assertion = (
+        record["epistemic_state"] == "user_asserted"
+        and policy.get("allow_source_free_user_assertions", True)
+    )
     if missing_refs:
         raise ContextError(f"unknown source_refs: {', '.join(missing_refs)}")
     if not record["source_refs"] and not source_free_assertion:
@@ -627,7 +723,11 @@ def normalize_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     record.setdefault("last_verified", None)
     record.setdefault("notes", "")
     if "id" not in record:
-        identity_payload = {key: value for key, value in record.items() if key not in {"created_at", "last_verified", "notes"}}
+        identity_payload = {
+            key: value
+            for key, value in record.items()
+            if key not in {"created_at", "last_verified", "notes"}
+        }
         record["id"] = f"memory.sha256:{sha256_bytes(canonical_bytes(identity_payload))}"
     return record
 
@@ -648,10 +748,17 @@ def cmd_promote(args: argparse.Namespace) -> None:
             raise ContextError(f"refusing to promote non-approved record: {record['id']}")
         records.append(record)
     count = append_jsonl_unique(workspace / "memory" / "records.jsonl", records)
-    print(json.dumps({"promoted": count, "records": [record["id"] for record in records]}, indent=2, sort_keys=True))
+    print(json.dumps({
+        "promoted": count,
+        "records": [record["id"] for record in records],
+    }, indent=2, sort_keys=True))
 
 
-def record_is_disclosable(record: dict[str, Any], profile: dict[str, Any], extra_tags: set[str]) -> bool:
+def record_is_disclosable(
+    record: dict[str, Any],
+    profile: dict[str, Any],
+    extra_tags: set[str],
+) -> bool:
     if record.get("approval") != "approved":
         return False
     if record.get("lifecycle", {}).get("state") != "active":
@@ -660,7 +767,9 @@ def record_is_disclosable(record: dict[str, Any], profile: dict[str, Any], extra
     if sensitivity == "secret" or sensitivity not in SENSITIVITY_RANK:
         return False
     ceiling = profile.get("max_sensitivity", "private")
-    if ceiling not in SENSITIVITY_RANK or SENSITIVITY_RANK[sensitivity] > SENSITIVITY_RANK[ceiling]:
+    if ceiling not in SENSITIVITY_RANK:
+        return False
+    if SENSITIVITY_RANK[sensitivity] > SENSITIVITY_RANK[ceiling]:
         return False
     allowed_types = set(profile.get("record_types", []))
     if allowed_types and record.get("record_type") not in allowed_types:
@@ -683,14 +792,21 @@ def cmd_bundle(args: argparse.Namespace) -> None:
     if not profile_path.exists():
         raise ContextError(f"unknown profile: {args.profile}")
     profile = load_json(profile_path)
-    if not isinstance(profile, dict) or profile.get("protocol") != "AI-CONTEXT/PROFILE":
-        raise ContextError("invalid profile")
+    if (
+        not isinstance(profile, dict)
+        or profile.get("protocol") != "AI-CONTEXT/PROFILE"
+        or profile.get("schema_version") != PROTOCOL_VERSION
+    ):
+        raise ContextError("invalid or unsupported profile")
     records = read_jsonl(workspace / "memory" / "records.jsonl")
     for record in records:
         validate_memory_record(record, workspace, policy)
     extra_tags = {tag.strip() for tag in args.tags.split(",") if tag.strip()} if args.tags else set()
-    selected = sorted((record for record in records if record_is_disclosable(record, profile, extra_tags)), key=lambda r: r["id"])
-    store_hash = sha256_bytes(canonical_bytes(sorted(records, key=lambda r: r["id"])))
+    selected = sorted(
+        (record for record in records if record_is_disclosable(record, profile, extra_tags)),
+        key=lambda record: record["id"],
+    )
+    store_hash = sha256_bytes(canonical_bytes(sorted(records, key=lambda record: record["id"])))
     payload = {
         "type": "ai-context-bundle",
         "protocol": "AI-CONTEXT/BUNDLE",
@@ -707,7 +823,48 @@ def cmd_bundle(args: argparse.Namespace) -> None:
     output = Path(args.output).expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(rendered, encoding="utf-8", newline="\n")
-    print(json.dumps({"output": str(output), "records": len(selected), "sha256": payload_hash}, indent=2, sort_keys=True))
+    print(json.dumps({
+        "output": str(output),
+        "records": len(selected),
+        "sha256": payload_hash,
+    }, indent=2, sort_keys=True))
+
+
+def validate_receipt(receipt: dict[str, Any]) -> None:
+    rid = receipt.get("id")
+    if not isinstance(rid, str) or not re.fullmatch(r"import\.sha256:[0-9a-f]{64}", rid):
+        raise ContextError(f"invalid receipt id: {rid}")
+    if receipt.get("protocol") != "AI-CONTEXT/IMPORT" or receipt.get("schema_version") != PROTOCOL_VERSION:
+        raise ContextError(f"unsupported receipt protocol/schema: {rid}")
+    source_hash = receipt.get("source_identity_sha256")
+    requested_adapter = receipt.get("requested_adapter")
+    adapter = receipt.get("adapter")
+    if not isinstance(source_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", source_hash):
+        raise ContextError(f"invalid receipt source hash: {rid}")
+    if not isinstance(requested_adapter, str):
+        raise ContextError(f"receipt missing requested_adapter: {rid}")
+    if not isinstance(adapter, dict) or adapter.get("version") != ADAPTER_VERSION:
+        raise ContextError(f"unsupported receipt adapter version: {rid}")
+    expected = receipt_id_for(source_hash, requested_adapter)
+    if rid != expected:
+        raise ContextError(f"receipt id/hash mismatch: {rid}")
+
+
+def validate_observation(obs: dict[str, Any], receipt_ids: set[str]) -> None:
+    oid = obs.get("id")
+    if not isinstance(oid, str) or not re.fullmatch(r"obs\.sha256:[0-9a-f]{64}", oid):
+        raise ContextError(f"invalid observation id: {oid}")
+    if obs.get("protocol") != "AI-CONTEXT/OBSERVATION" or obs.get("schema_version") != PROTOCOL_VERSION:
+        raise ContextError(f"unsupported observation protocol/schema: {oid}")
+    if obs.get("source_receipt_id") not in receipt_ids:
+        raise ContextError(f"orphan observation receipt: {oid}")
+    expected_content_hash = sha256_bytes(canonical_bytes(obs.get("content")))
+    if obs.get("content_sha256") != expected_content_hash:
+        raise ContextError(f"observation content hash mismatch: {oid}")
+    core = {key: value for key, value in obs.items() if key != "id"}
+    expected_id = f"obs.sha256:{sha256_bytes(canonical_bytes(core))}"
+    if oid != expected_id:
+        raise ContextError(f"observation id/hash mismatch: {oid}")
 
 
 def cmd_validate(args: argparse.Namespace) -> None:
@@ -719,29 +876,28 @@ def cmd_validate(args: argparse.Namespace) -> None:
     records = read_jsonl(workspace / "memory" / "records.jsonl")
 
     receipt_ids: set[str] = set()
+    receipts_by_id: dict[str, dict[str, Any]] = {}
     for receipt in receipts:
-        rid = receipt.get("id")
-        if not isinstance(rid, str) or not re.fullmatch(r"import\.sha256:[0-9a-f]{64}", rid):
-            raise ContextError(f"invalid receipt id: {rid}")
+        validate_receipt(receipt)
+        rid = receipt["id"]
         if rid in receipt_ids:
             raise ContextError(f"duplicate receipt id: {rid}")
         receipt_ids.add(rid)
-        if receipt.get("protocol") != "AI-CONTEXT/IMPORT" or receipt.get("schema_version") != PROTOCOL_VERSION:
-            raise ContextError(f"unsupported receipt protocol/schema: {rid}")
+        receipts_by_id[rid] = receipt
 
     observation_ids: set[str] = set()
+    observation_counts = {rid: 0 for rid in receipt_ids}
     for obs in observations:
-        oid = obs.get("id")
-        if not isinstance(oid, str) or not re.fullmatch(r"obs\.sha256:[0-9a-f]{64}", oid):
-            raise ContextError(f"invalid observation id: {oid}")
+        validate_observation(obs, receipt_ids)
+        oid = obs["id"]
         if oid in observation_ids:
             raise ContextError(f"duplicate observation id: {oid}")
         observation_ids.add(oid)
-        if obs.get("source_receipt_id") not in receipt_ids:
-            raise ContextError(f"orphan observation receipt: {oid}")
-        expected_content_hash = sha256_bytes(canonical_bytes(obs.get("content")))
-        if obs.get("content_sha256") != expected_content_hash:
-            raise ContextError(f"observation content hash mismatch: {oid}")
+        observation_counts[obs["source_receipt_id"]] += 1
+
+    for rid, receipt in receipts_by_id.items():
+        if receipt.get("observation_count") != observation_counts[rid]:
+            raise ContextError(f"receipt observation_count mismatch: {rid}")
 
     record_ids: set[str] = set()
     for record in records:
@@ -756,7 +912,9 @@ def cmd_validate(args: argparse.Namespace) -> None:
         "receipts": len(receipts),
         "observations": len(observations),
         "memory_records": len(records),
-        "canonical_store_sha256": sha256_bytes(canonical_bytes(sorted(records, key=lambda r: r["id"]))),
+        "canonical_store_sha256": sha256_bytes(
+            canonical_bytes(sorted(records, key=lambda record: record["id"]))
+        ),
     }, indent=2, sort_keys=True))
 
 
@@ -771,15 +929,25 @@ def build_parser() -> argparse.ArgumentParser:
     imp = sub.add_parser("import", help="import private source material into staging")
     imp.add_argument("workspace")
     imp.add_argument("source")
-    imp.add_argument("--adapter", default="auto", choices=["auto", "repo", "chatgpt", "claude", "generic-json"])
+    imp.add_argument(
+        "--adapter",
+        default="auto",
+        choices=["auto", "repo", "chatgpt", "claude", "generic-json"],
+    )
     imp.set_defaults(func=cmd_import)
 
-    promote = sub.add_parser("promote", help="explicitly promote candidate records into canonical memory")
+    promote = sub.add_parser(
+        "promote",
+        help="explicitly promote candidate records into canonical memory",
+    )
     promote.add_argument("workspace")
     promote.add_argument("--input", required=True)
     promote.set_defaults(func=cmd_promote)
 
-    validate = sub.add_parser("validate", help="validate receipts, observations, provenance, and canonical memory")
+    validate = sub.add_parser(
+        "validate",
+        help="validate receipts, observations, provenance, and canonical memory",
+    )
     validate.add_argument("workspace")
     validate.set_defaults(func=cmd_validate)
 
