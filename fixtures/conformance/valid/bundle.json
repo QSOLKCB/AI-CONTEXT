@@ -1,0 +1,29 @@
+{
+  "type": "ai-context-bundle",
+  "protocol": "AI-CONTEXT/BUNDLE",
+  "schema_version": "0.1.0",
+  "canonicalizer": "python-json-v0.1",
+  "profile": "general",
+  "selector_tags": ["coding"],
+  "canonical_store_sha256": "891be271e87ba3c2c549066826291b35f9dfff5ddba49c908acb241af4f447a7",
+  "records": [
+    {
+      "id": "memory.fixture.preference",
+      "protocol": "AI-CONTEXT/MEMORY",
+      "schema_version": "0.1.0",
+      "record_type": "preference",
+      "content": {"editor": "vim"},
+      "sensitivity": "private",
+      "epistemic_state": "user_asserted",
+      "confidence": 1.0,
+      "approval": "approved",
+      "source_refs": [],
+      "tags": ["coding"],
+      "lifecycle": {"state": "active", "expires_at": null, "supersedes": null},
+      "created_at": "2026-08-23T00:00:00Z",
+      "last_verified": null,
+      "notes": "synthetic conformance fixture"
+    }
+  ],
+  "canonical_payload_sha256": "272180183e6d369deffa4b83138d5d979598355518befb516f746761011bed4b"
+}

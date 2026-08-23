@@ -1,0 +1,13 @@
+{
+  "protocol": "AI-CONTEXT/POLICY",
+  "schema_version": "0.1.0",
+  "default_sensitivity": "private",
+  "forbid_secret_memory": true,
+  "allow_source_free_user_assertions": true,
+  "max_archive_members": 5000,
+  "max_archive_member_bytes": 67108864,
+  "max_archive_total_bytes": 536870912,
+  "max_repo_files": 10000,
+  "max_repo_file_bytes": 4194304,
+  "max_repo_total_bytes": 268435456
+}

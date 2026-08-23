@@ -1,0 +1,14 @@
+{
+  "id": 123,
+  "protocol": "AI-CONTEXT/MEMORY",
+  "schema_version": "0.1.0",
+  "record_type": "preference",
+  "content": {"editor": "vim"},
+  "sensitivity": "private",
+  "epistemic_state": "user_asserted",
+  "confidence": 1.0,
+  "approval": "approved",
+  "source_refs": [],
+  "tags": ["coding"],
+  "lifecycle": {"state": "active", "expires_at": null, "supersedes": null}
+}

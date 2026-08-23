@@ -1,0 +1,7 @@
+{
+  "protocol": "AI-CONTEXT/POLICY",
+  "schema_version": "0.1.0",
+  "default_sensitivity": "secret",
+  "forbid_secret_memory": true,
+  "allow_source_free_user_assertions": true
+}

@@ -1,0 +1,9 @@
+{
+  "id": "obs.sha256:60ffc9fffe163b49f7bd576cf346a30996891ce9e59d63aba627edd3fc5d923e",
+  "protocol": "AI-CONTEXT/OBSERVATION",
+  "schema_version": "0.1.0",
+  "source_receipt_id": "import.sha256:aa7cc978bdef1297883023544edd55631d94d1826599a3081cd90cd897521233",
+  "kind": "document",
+  "content": {"text": "synthetic conformance fixture"},
+  "content_sha256": "not-a-sha256"
+}

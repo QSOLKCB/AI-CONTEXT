@@ -33,15 +33,17 @@
 - [x] JSON Schema for observations.
 - [x] JSON Schema for canonical memory records.
 - [x] JSON Schema for bundles.
-- [ ] Standalone conformance fixture files for valid/invalid records.
+- [x] Standalone conformance fixture files for valid/invalid records.
 - [x] Determinism tests for repeated bundle builds.
-- [ ] Unknown adapter/schema rejection tests.
-- [ ] Duplicate import/idempotency tests.
+- [x] Unknown adapter/schema rejection tests.
+- [x] Duplicate import/idempotency tests.
 - [x] Archive traversal test.
-- [ ] Oversized-input tests.
+- [x] Oversized-input tests.
 - [x] Secret rejection tests.
-- [ ] Privacy non-downgrade tests.
-- [ ] Tombstone/deletion propagation tests.
+- [x] Privacy non-downgrade tests.
+- [x] Tombstone/deletion propagation tests.
+
+**Phase 2 complete.** Draft 2020-12 schema fixtures are validated independently of the runtime CLI, while protocol tests cover runtime invariants JSON Schema cannot express. Tombstones remain in canonical history but are excluded from newly built disclosure bundles; tombstone receipts themselves remain a Phase 5 responsibility.
 
 ## Phase 3 — Provider import adapters
 

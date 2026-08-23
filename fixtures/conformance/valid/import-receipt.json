@@ -1,0 +1,14 @@
+{
+  "id": "import.sha256:aa7cc978bdef1297883023544edd55631d94d1826599a3081cd90cd897521233",
+  "protocol": "AI-CONTEXT/IMPORT",
+  "schema_version": "0.1.0",
+  "source_type": "document",
+  "source_name": "fixture.txt",
+  "source_identity_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "requested_adapter": "auto",
+  "adapter": {"id": "document", "version": "0.1.0"},
+  "parse_status": "generic",
+  "observation_count": 1,
+  "warnings": [],
+  "imported_at": "2026-08-23T00:00:00Z"
+}
