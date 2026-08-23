@@ -19,7 +19,7 @@
       },
       "additionalProperties": false
     },
-    "proposed_memory": {"$ref": "curation-candidate.schema.json#/$defs/proposed_memory"},
+    "proposed_memory": {"type": "object"},
     "semantic_key": {"type": ["string", "null"]}
   },
   "additionalProperties": false
