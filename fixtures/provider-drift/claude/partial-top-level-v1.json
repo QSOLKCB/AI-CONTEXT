@@ -1,0 +1,18 @@
+[
+  {
+    "uuid": "claude-conv-partial",
+    "name": "Synthetic partial layout",
+    "chat_messages": [
+      {
+        "uuid": "claude-partial-msg-1",
+        "sender": "human",
+        "created_at": "2026-01-01T00:00:00Z",
+        "text": ["Recognized", "message"]
+      }
+    ]
+  },
+  {
+    "future_shape": true,
+    "messages": []
+  }
+]
