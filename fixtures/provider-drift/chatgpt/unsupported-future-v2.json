@@ -1,0 +1,8 @@
+[
+  {
+    "conversation_id": "chatgpt-future-1",
+    "messages": [
+      {"role": "user", "text": "This intentionally does not match mapping-v1."}
+    ]
+  }
+]
