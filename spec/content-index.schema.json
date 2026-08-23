@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/content-index.schema.json",
+  "title": "AI-CONTEXT Content Provenance Index",
+  "type": "object",
+  "required": ["protocol", "schema_version", "groups", "canonical_payload_sha256"],
+  "properties": {
+    "protocol": {"const": "AI-CONTEXT/CONTENT-INDEX"},
+    "schema_version": {"const": "0.1.0"},
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["content_id", "observation_ids"],
+        "properties": {
+          "content_id": {"type": "string", "pattern": "^content\\.sha256:[0-9a-f]{64}$"},
+          "observation_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^obs\\.sha256:[0-9a-f]{64}$"},
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "canonical_payload_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "additionalProperties": false
+}
