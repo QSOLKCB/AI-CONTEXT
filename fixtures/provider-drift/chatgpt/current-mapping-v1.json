@@ -1,0 +1,24 @@
+[
+  {
+    "id": "chatgpt-conv-1",
+    "title": "Synthetic current layout",
+    "mapping": {
+      "node-user": {
+        "message": {
+          "id": "chatgpt-msg-1",
+          "author": {"role": "user"},
+          "create_time": 1,
+          "content": {"parts": ["Hello from the current fixture."]}
+        }
+      },
+      "node-assistant": {
+        "message": {
+          "id": "chatgpt-msg-2",
+          "author": {"role": "assistant"},
+          "create_time": 2,
+          "content": {"parts": ["Synthetic assistant response."]}
+        }
+      }
+    }
+  }
+]

@@ -1,0 +1,12 @@
+[
+  {
+    "header": "Gemini",
+    "title": "Prompted Synthetic fallback prompt",
+    "titleUrl": "https://gemini.google.com/app/c/gemini-conv-3",
+    "time": "2026-01-01T00:02:00Z",
+    "products": ["Gemini Apps"],
+    "safeHtmlItem": [
+      {"html": "<p>Synthetic <strong>HTML</strong> response.</p>"}
+    ]
+  }
+]

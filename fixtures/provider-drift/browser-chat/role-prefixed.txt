@@ -1,0 +1,4 @@
+User: Synthetic text-archive question.
+Assistant: Synthetic text-archive answer.
+User: Second synthetic prompt.
+Assistant: Second synthetic response.

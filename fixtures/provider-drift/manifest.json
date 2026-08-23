@@ -1,0 +1,17 @@
+{
+  "type": "ai-context-provider-drift-manifest",
+  "schema_version": "1.0.0",
+  "cases": [
+    {"adapter": "chatgpt", "path": "chatgpt/current-mapping-v1.json", "expected_status": "exact", "expected_messages": 2},
+    {"adapter": "chatgpt", "path": "chatgpt/partial-top-level-v1.json", "expected_status": "partial", "expected_messages": 1},
+    {"adapter": "chatgpt", "path": "chatgpt/unsupported-future-v2.json", "expected_status": "reject"},
+    {"adapter": "claude", "path": "claude/current-chat-messages-v1.json", "expected_status": "exact", "expected_messages": 2},
+    {"adapter": "claude", "path": "claude/partial-top-level-v1.json", "expected_status": "partial", "expected_messages": 1},
+    {"adapter": "claude", "path": "claude/unsupported-future-v2.json", "expected_status": "reject"},
+    {"adapter": "gemini", "path": "gemini/details-v1.json", "expected_status": "partial", "expected_messages": 2},
+    {"adapter": "gemini", "path": "gemini/user-interactions-v1.json", "expected_status": "partial", "expected_messages": 2},
+    {"adapter": "gemini", "path": "gemini/safe-html-v1.json", "expected_status": "partial", "expected_messages": 2},
+    {"adapter": "grok", "path": "grok/current-prod-backend-v1.json", "expected_status": "exact", "expected_messages": 2},
+    {"adapter": "grok", "path": "grok/thinking-trace-v1.json", "expected_status": "partial", "expected_messages": 1}
+  ]
+}

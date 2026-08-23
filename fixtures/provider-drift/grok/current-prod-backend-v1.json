@@ -1,0 +1,31 @@
+{
+  "conversations": [
+    {
+      "conversation": {
+        "id": "grok-conv-1",
+        "title": "Synthetic Grok current layout",
+        "create_time": "2026-01-01T00:00:00Z"
+      },
+      "responses": [
+        {
+          "response": {
+            "_id": "grok-msg-1",
+            "sender": "human",
+            "message": "Synthetic Grok user message.",
+            "create_time": {"$date": {"$numberLong": "1767225600000"}}
+          }
+        },
+        {
+          "response": {
+            "_id": "grok-msg-2",
+            "sender": "assistant",
+            "message": "Synthetic Grok assistant response.",
+            "model": "grok-synthetic",
+            "parent_response_id": "grok-msg-1",
+            "create_time": {"$date": {"$numberLong": "1767225601000"}}
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "conversations": [
+    {
+      "conversation_id": "community-conv-1",
+      "title": "Synthetic community source",
+      "messages": [
+        {
+          "message_id": "community-msg-1",
+          "role": "human",
+          "created_at": "2026-01-01T00:00:00Z",
+          "content": {"text": "Synthetic community user message."}
+        },
+        {
+          "message_id": "community-msg-2",
+          "role": "bot",
+          "created_at": "2026-01-01T00:00:01Z",
+          "content": {"text": "Synthetic community assistant response."}
+        }
+      ]
+    }
+  ]
+}

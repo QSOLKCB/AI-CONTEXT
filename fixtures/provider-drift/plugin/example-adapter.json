@@ -1,0 +1,27 @@
+{
+  "protocol": "AI-CONTEXT/ADAPTER-PLUGIN",
+  "schema_version": "0.1.0",
+  "id": "community.synthetic-chat",
+  "version": "1.0.0",
+  "description": "Synthetic data-only adapter used by Phase 3 conformance tests.",
+  "input": {
+    "kind": "json",
+    "root_path": "conversations",
+    "filename": "synthetic-community-export.json"
+  },
+  "conversation": {
+    "messages_path": "messages",
+    "id_path": "conversation_id",
+    "title_path": "title"
+  },
+  "message": {
+    "text_path": "content.text",
+    "actor_path": "role",
+    "id_path": "message_id",
+    "timestamp_path": "created_at"
+  },
+  "role_map": {
+    "human": "user",
+    "bot": "assistant"
+  }
+}

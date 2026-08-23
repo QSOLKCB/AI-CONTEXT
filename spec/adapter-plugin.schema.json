@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/adapter-plugin.schema.json",
+  "title": "AI-CONTEXT Data-only Adapter Plugin",
+  "type": "object",
+  "required": ["protocol", "schema_version", "id", "version", "input", "conversation", "message"],
+  "properties": {
+    "protocol": {"const": "AI-CONTEXT/ADAPTER-PLUGIN"},
+    "schema_version": {"const": "0.1.0"},
+    "id": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "description": {"type": "string"},
+    "input": {
+      "type": "object",
+      "required": ["kind", "root_path"],
+      "properties": {
+        "kind": {"const": "json"},
+        "root_path": {"type": "string"},
+        "filename": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "conversation": {
+      "type": "object",
+      "required": ["messages_path"],
+      "properties": {
+        "messages_path": {"type": "string", "minLength": 1},
+        "id_path": {"type": "string"},
+        "title_path": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "message": {
+      "type": "object",
+      "required": ["text_path"],
+      "properties": {
+        "text_path": {"type": "string", "minLength": 1},
+        "actor_path": {"type": "string"},
+        "id_path": {"type": "string"},
+        "timestamp_path": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "role_map": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    }
+  },
+  "additionalProperties": false
+}

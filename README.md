@@ -70,16 +70,118 @@ A deterministic, task-scoped projection of approved memory. A bundle can be hand
 
 ## Source adapters
 
-The reference CLI is designed around adapters rather than one fixed export format. Initial targets are:
+Provider export formats are inputs, not stable APIs. Phase 3 therefore separates the stable AI-CONTEXT staging/receipt contract from a deliberately churn-tolerant provider parsing layer.
 
-- ChatGPT-style exports containing conversation JSON;
-- Claude-style conversation exports;
-- generic JSON and JSONL archives;
-- Markdown and plain-text collections;
-- local Git working trees and exported repositories;
-- future adapters for Gemini, Grok, NotebookLM, email archives, cloud-drive exports, and user-defined sources.
+### Core import adapters
 
-Provider export formats change. Adapters therefore emit explicit parser/version receipts and must never silently reinterpret an unknown format as a known one.
+`tools/ai_context.py` retains the Phase 1 adapters for:
+
+- ChatGPT conversation exports;
+- Claude conversation exports;
+- generic JSON and JSONL;
+- Markdown and plain text;
+- local Git/source trees.
+
+ChatGPT and Claude have standalone provider-format notes and migration fixtures under `docs/providers/` and `fixtures/provider-drift/`. The migration suite enforces three states: recognized current layouts are `exact`, mixed known/unknown layouts are `partial`, and totally unknown provider shapes fail closed.
+
+### Phase 3 provider adapters
+
+`tools/provider_import.py` handles higher-churn or more weakly documented provider formats:
+
+```bash
+# Google Takeout -> My Activity -> Gemini Apps
+python3 tools/provider_import.py \
+  ~/my-ai-context \
+  ~/Downloads/MyActivity.json \
+  --adapter gemini
+
+# xAI/Grok account export
+python3 tools/provider_import.py \
+  ~/my-ai-context \
+  ~/Downloads/prod-grok-backend.json \
+  --adapter grok
+
+# Browser-saved or third-party HTML/text chat archives
+python3 tools/provider_import.py \
+  ~/my-ai-context \
+  ~/Downloads/chat-export.html \
+  --adapter browser-chat
+```
+
+The same command accepts ZIP archives or extracted directories when the provider adapter can identify its expected file by basename.
+
+Every provider import receipt records:
+
+```text
+adapter.id
+adapter.version
+adapter_layout
+parse_status
+```
+
+The recognized provider layout is therefore distinct from both the provider name and the AI-CONTEXT adapter implementation version.
+
+### Gemini
+
+Google provides an official Takeout surface for Gemini Apps activity, but the emitted My Activity schema is not treated as a stable public API. The Phase 3 adapter recognizes observed `details`, `userInteractions`, and `safeHtmlItem` activity variants.
+
+Gemini imports are always marked at least `partial`: structural recognition cannot prove that Takeout included a complete conversation or untruncated response content.
+
+See [`docs/providers/GEMINI.md`](docs/providers/GEMINI.md).
+
+### Grok
+
+xAI provides an official account-data download surface. The observed conversation payload commonly lives in `prod-grok-backend.json`, but that schema remains provider-controlled and undocumented.
+
+The Phase 3 adapter recognizes the observed wrapped `conversations[].responses[].response` layout and MongoDB-style extended JSON timestamps. Exported `thinking_trace` and `agent_thinking_traces` fields are intentionally excluded from ordinary staging observations; visible conversation messages remain importable.
+
+See [`docs/providers/GROK.md`](docs/providers/GROK.md).
+
+### Generic browser-chat archives
+
+The browser-chat adapter supports:
+
+- HTML with structural role hints such as `data-message-author-role`, `data-role`, or common user/assistant message classes;
+- role-prefixed text such as `User:` / `Assistant:`;
+- ZIPs or directories containing HTML, text, or Markdown.
+
+If no role structure can be recovered, the source is staged as one unassigned `browser_chat_document` and marked `partial` rather than fabricating dialogue boundaries.
+
+### Community adapter plugins
+
+Phase 3 also defines a **data-only JSON mapping plugin** interface:
+
+```bash
+python3 tools/provider_import.py \
+  ~/my-ai-context \
+  export.json \
+  --adapter plugin \
+  --plugin my-adapter.json
+```
+
+Plugins are JSON descriptors validated against `spec/adapter-plugin.schema.json`. They map conversation/message fields with simple dot-separated object paths. They do not execute Python, shell commands, package installers, arbitrary expressions, or provider code.
+
+The canonical descriptor SHA-256 is bound into the import receipt identity, so changing the mapping changes the receipt even when the source archive is identical.
+
+See [`docs/providers/COMMUNITY-PLUGINS.md`](docs/providers/COMMUNITY-PLUGINS.md).
+
+### Provider drift fixtures
+
+Synthetic migration fixtures live under:
+
+```text
+fixtures/provider-drift/
+```
+
+`fixtures/provider-drift/manifest.json` is the machine-readable compatibility contract for the historical provider layouts currently supported by the reference implementation.
+
+Provider format details:
+
+- [`docs/providers/CHATGPT.md`](docs/providers/CHATGPT.md)
+- [`docs/providers/CLAUDE.md`](docs/providers/CLAUDE.md)
+- [`docs/providers/GEMINI.md`](docs/providers/GEMINI.md)
+- [`docs/providers/GROK.md`](docs/providers/GROK.md)
+- [`docs/providers/COMMUNITY-PLUGINS.md`](docs/providers/COMMUNITY-PLUGINS.md)
 
 ## Memory record model
 
@@ -111,13 +213,14 @@ DELETED != MERELY HIDDEN
 ## Repository layout
 
 ```text
-spec/                 protocol and JSON schemas
-docs/                 architecture, threat model and format notes
-tools/                dependency-light reference CLI
-fixtures/conformance/ standalone valid/invalid protocol fixtures
-examples/             synthetic examples only
-tests/                conformance and security tests
-workspace.example/    safe example private-workspace structure
+spec/                    protocol and JSON schemas
+docs/                    architecture, threat model and provider format notes
+tools/                   dependency-light reference CLIs
+fixtures/conformance/    standalone valid/invalid protocol fixtures
+fixtures/provider-drift/ synthetic provider migration fixtures
+examples/                synthetic examples only
+tests/                   conformance, security and provider-drift tests
+workspace.example/       safe example private-workspace structure
 ```
 
 A real user workspace should live outside this public framework repository or in a separately controlled private location.
@@ -128,8 +231,12 @@ A real user workspace should live outside this public framework repository or in
 # Create a private workspace
 python3 tools/ai_context.py init ~/my-ai-context
 
-# Import an AI export into staging
+# Import a ChatGPT/Claude/generic export into staging
 python3 tools/ai_context.py import ~/my-ai-context ~/Downloads/ai-export.zip --adapter auto
+
+# Import Gemini or Grok provider exports
+python3 tools/provider_import.py ~/my-ai-context ~/Downloads/MyActivity.json --adapter gemini
+python3 tools/provider_import.py ~/my-ai-context ~/Downloads/prod-grok-backend.json --adapter grok
 
 # Import a local repository as another source
 python3 tools/ai_context.py import ~/my-ai-context ~/src/my-project --adapter repo
@@ -137,20 +244,22 @@ python3 tools/ai_context.py import ~/my-ai-context ~/src/my-project --adapter re
 # Inspect staged observations and explicitly promote selected material
 python3 tools/ai_context.py promote ~/my-ai-context --input candidate.json
 
-# Validate the canonical store
+# Validate the canonical store and all import receipts
 python3 tools/ai_context.py validate ~/my-ai-context
 
 # Build the smallest approved bundle for a profile/task
 python3 tools/ai_context.py bundle ~/my-ai-context --profile coding --output /tmp/context.json
 ```
 
-The CLI in the first reference implementation intentionally keeps promotion explicit. Automated semantic extraction can be added later behind a policy boundary without changing the trust model.
+Both import CLIs stop at staging. Automated semantic extraction or provider adapters cannot self-promote their output into canonical memory.
 
 ## Security posture
 
 AI-CONTEXT is **not** a password manager and must not be used to preserve credentials, private keys, session cookies, recovery codes, or bearer tokens as AI memory. Secret-like material is rejected from canonical memory by policy.
 
 Encryption-at-rest is a storage-backend responsibility in the initial reference implementation. The protocol is designed so encrypted vault implementations can be swapped in without changing canonical record semantics.
+
+Provider adapters are intentionally conservative around provider-private or reasoning-like fields. An export containing such fields does not automatically make them ordinary canonicalizable memory.
 
 See [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md).
 
@@ -250,7 +359,7 @@ bridge = explicit policy-controlled translation boundary
 
 ## Status
 
-Early reference implementation. Phases 0–2 are complete; the protocol should still be treated as experimental until the migration and broader interoperability rules reach v1.0.
+Early reference implementation. Phases 0–3 are complete on the Phase 3 implementation branch; the protocol should still be treated as experimental until the migration and broader interoperability rules reach v1.0.
 
 See [`ROADMAP.md`](ROADMAP.md) for the staged implementation plan.
 
