@@ -18,6 +18,7 @@ from evidence_adapters import (
     AdapterResult,
     EvidenceError,
     EvidenceItem,
+    OOXML_EXTENSIONS,
     email_item,
     items_for_bytes,
     parse_drive_directory,
@@ -130,7 +131,9 @@ def parse_document_zip(source: Path, policy: dict[str, Any], max_lines: int) -> 
         for info in sorted(ai_context.safe_zip_infos(archive, policy), key=lambda entry: entry.filename):
             if PurePosixPath(info.filename).suffix.casefold() not in DOCUMENT_SUFFIXES:
                 continue
-            file_items, extra = items_for_bytes(archive.read(info), source_path=info.filename, max_lines=max_lines)
+            file_items, extra = items_for_bytes(
+                archive.read(info), source_path=info.filename, max_lines=max_lines
+            )
             items.extend(file_items)
             warnings.extend(extra)
     if not items:
@@ -156,9 +159,16 @@ def parse_drive_zip(source: Path, policy: dict[str, Any], max_lines: int) -> Ada
         infos = ai_context.safe_zip_infos(archive, policy)
         drive_infos = [
             info for info in infos
-            if "/drive/" in f"/{info.filename.casefold()}" or info.filename.casefold().startswith("drive/")
+            if "/drive/" in f"/{info.filename.casefold()}"
+            or info.filename.casefold().startswith("drive/")
+            or "/google drive/" in f"/{info.filename.casefold()}"
         ]
-        for info in sorted(drive_infos or infos, key=lambda entry: entry.filename):
+        selected = drive_infos or infos
+        if not drive_infos:
+            warnings.append(
+                "no recognizable Drive/Google Drive root was found in archive; imported fallback files as partial Drive-export evidence"
+            )
+        for info in sorted(selected, key=lambda entry: entry.filename):
             path = PurePosixPath(info.filename)
             if path.name == "archive_browser.html" or path.suffix.casefold() not in DOCUMENT_SUFFIXES:
                 continue
@@ -197,10 +207,11 @@ def parse_email_directory(root: Path, *, max_file_bytes: int) -> AdapterResult:
             continue
         if child.suffix.casefold() not in EMAIL_SUFFIXES:
             continue
+        rel = child.relative_to(root).as_posix()
         if child.stat().st_size > max_file_bytes:
-            warnings.append(f"skipped oversized email archive file: {child.relative_to(root).as_posix()}")
+            warnings.append(f"skipped oversized email archive file: {rel}")
             continue
-        results.append(parse_email_file(child))
+        results.append(parse_email_file(child, source_path=rel))
     return merge_results(
         results,
         source_type="email-archive",
@@ -208,7 +219,10 @@ def parse_email_directory(root: Path, *, max_file_bytes: int) -> AdapterResult:
         layout_id="email-directory-v1",
         authority_class="email_archive_message",
         authority_rank=65,
-        snapshot_metadata={"standards": ["RFC 5322/MIME"], "gmail_label_header": "X-Gmail-Labels"},
+        snapshot_metadata={
+            "standards": ["RFC 5322/MIME"],
+            "gmail_label_header": "X-Gmail-Labels",
+        },
         extra_warnings=warnings,
     )
 
@@ -219,15 +233,14 @@ def parse_mbox_bytes(raw: bytes, label: str) -> AdapterResult:
     temp = Path(name)
     try:
         temp.write_bytes(raw)
-        result = parse_email_file(temp)
-        items = [EvidenceItem(**{**item.__dict__, "source_path": label}) for item in result.items]
-        return AdapterResult(**{**result.__dict__, "items": items})
+        return parse_email_file(temp, source_path=label)
     finally:
         temp.unlink(missing_ok=True)
 
 
 def parse_email_zip(source: Path, policy: dict[str, Any]) -> AdapterResult:
     results: list[AdapterResult] = []
+    skipped_warnings: list[str] = []
     with zipfile.ZipFile(source) as archive:
         for info in sorted(ai_context.safe_zip_infos(archive, policy), key=lambda entry: entry.filename):
             suffix = PurePosixPath(info.filename).suffix.casefold()
@@ -247,6 +260,8 @@ def parse_email_zip(source: Path, policy: dict[str, Any]) -> AdapterResult:
                         warnings=warnings,
                         snapshot_metadata={},
                     ))
+                else:
+                    skipped_warnings.extend(warnings)
             elif suffix in {".mbox", ".mbx"}:
                 results.append(parse_mbox_bytes(archive.read(info), info.filename))
     return merge_results(
@@ -256,7 +271,11 @@ def parse_email_zip(source: Path, policy: dict[str, Any]) -> AdapterResult:
         layout_id="email-zip-v1",
         authority_class="email_archive_message",
         authority_rank=65,
-        snapshot_metadata={"standards": ["RFC 5322/MIME"], "gmail_label_header": "X-Gmail-Labels"},
+        snapshot_metadata={
+            "standards": ["RFC 5322/MIME"],
+            "gmail_label_header": "X-Gmail-Labels",
+        },
+        extra_warnings=skipped_warnings,
     )
 
 
@@ -286,7 +305,7 @@ def content_object(item: EvidenceItem) -> dict[str, Any]:
         raw = text.encode("utf-8")
         digest = ai_context.sha256_bytes(raw)
         return {
-            "id": f"content.sha256:{digest}",
+            "id": f"content.text.sha256:{digest}",
             "protocol": "AI-CONTEXT/CONTENT",
             "schema_version": ai_context.PROTOCOL_VERSION,
             "content_kind": "text",
@@ -298,7 +317,7 @@ def content_object(item: EvidenceItem) -> dict[str, Any]:
     if not isinstance(digest, str):
         raise ai_context.ContextError(f"binary evidence missing raw sha256: {item.source_path}")
     return {
-        "id": f"content.sha256:{digest}",
+        "id": f"content.binary.sha256:{digest}",
         "protocol": "AI-CONTEXT/CONTENT",
         "schema_version": ai_context.PROTOCOL_VERSION,
         "content_kind": "binary_ref",
@@ -307,7 +326,11 @@ def content_object(item: EvidenceItem) -> dict[str, Any]:
     }
 
 
-def rows_for_result(result: AdapterResult, receipt_id: str, snapshot_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def rows_for_result(
+    result: AdapterResult,
+    receipt_id: str,
+    snapshot_id: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     contents: list[dict[str, Any]] = []
     observations: list[dict[str, Any]] = []
     for item in result.items:
@@ -378,12 +401,14 @@ def parse_source(args: argparse.Namespace, source: Path, policy: dict[str, Any])
     if args.adapter == "email":
         if source.is_dir():
             return parse_email_directory(source, max_file_bytes=max_file_bytes)
-        if zipfile.is_zipfile(source):
+        if zipfile.is_zipfile(source) and source.suffix.casefold() not in EMAIL_SUFFIXES:
             return parse_email_zip(source, policy)
         return parse_email_file(source)
     if args.adapter == "document":
         if source.is_dir():
             return parse_document_directory(source, max_file_bytes=max_file_bytes, max_lines=args.chunk_lines)
+        if source.suffix.casefold() in OOXML_EXTENSIONS | {".pdf"}:
+            return parse_document_file(source, max_lines=args.chunk_lines)
         if zipfile.is_zipfile(source):
             return parse_document_zip(source, policy, args.chunk_lines)
         return parse_document_file(source, max_lines=args.chunk_lines)
@@ -473,7 +498,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="AI-CONTEXT Phase 4 source-evidence importer")
     parser.add_argument("workspace")
     parser.add_argument("source")
-    parser.add_argument("--adapter", required=True, choices=["repo", "document", "drive-export", "email"])
+    parser.add_argument(
+        "--adapter",
+        required=True,
+        choices=["repo", "document", "drive-export", "email"],
+    )
     parser.add_argument("--chunk-lines", type=int, default=80)
     return parser
 
