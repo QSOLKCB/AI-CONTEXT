@@ -1,5 +1,4 @@
 import json
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -57,6 +56,33 @@ class ProviderDriftTests(unittest.TestCase):
                 self.assertEqual(len(result.messages), case["expected_messages"])
                 self.assertEqual(result.adapter_id, case["adapter"])
                 self.assertEqual(result.adapter_version, "0.1.0")
+
+    def test_core_chatgpt_and_claude_importers_obey_drift_manifest(self):
+        manifest = self.load("manifest.json")
+        cases = [case for case in manifest["cases"] if case["adapter"] in {"chatgpt", "claude"}]
+        for case in cases:
+            with self.subTest(adapter=case["adapter"], path=case["path"]):
+                with tempfile.TemporaryDirectory() as temp:
+                    workspace = Path(temp) / "workspace"
+                    run_cli(CORE_CLI, "init", workspace)
+                    source = FIXTURES / case["path"]
+                    expected_code = 2 if case["expected_status"] == "reject" else 0
+                    imported = run_cli(
+                        CORE_CLI,
+                        "import",
+                        workspace,
+                        source,
+                        "--adapter",
+                        case["adapter"],
+                        expect=expected_code,
+                    )
+                    if expected_code:
+                        self.assertIn("layout not recognized", imported.stderr)
+                        continue
+                    result = json.loads(imported.stdout)
+                    self.assertEqual(result["parse_status"], case["expected_status"])
+                    self.assertEqual(result["observations_total"], case["expected_messages"])
+                    run_cli(CORE_CLI, "validate", workspace)
 
     def test_grok_thinking_trace_never_enters_normalized_messages(self):
         raw = (FIXTURES / "grok" / "thinking-trace-v1.json").read_text(encoding="utf-8")
