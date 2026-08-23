@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/curation-supersession.schema.json",
+  "title": "AI-CONTEXT Supersession Edge",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "from_memory_id", "to_memory_id", "candidate_id", "decision_id", "mutation_id", "reason", "created_at"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^supersession\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/SUPERSESSION"},
+    "schema_version": {"const": "0.1.0"},
+    "from_memory_id": {"type": "string", "minLength": 1},
+    "to_memory_id": {"type": "string", "minLength": 1},
+    "candidate_id": {"type": ["string", "null"], "pattern": "^candidate\\.sha256:[0-9a-f]{64}$"},
+    "decision_id": {"type": ["string", "null"], "pattern": "^decision\\.sha256:[0-9a-f]{64}$"},
+    "mutation_id": {"type": "string", "pattern": "^mutation\\.sha256:[0-9a-f]{64}$"},
+    "reason": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}
