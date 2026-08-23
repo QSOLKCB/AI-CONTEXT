@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/source-snapshot.schema.json",
+  "title": "AI-CONTEXT Source Snapshot",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "source_type", "source_identity_sha256", "authority", "adapter", "metadata"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^snapshot\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/SOURCE-SNAPSHOT"},
+    "schema_version": {"const": "0.1.0"},
+    "source_type": {"type": "string", "minLength": 1},
+    "source_identity_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "authority": {"$ref": "source-authority.schema.json"},
+    "adapter": {
+      "type": "object",
+      "required": ["id", "version", "layout"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "version": {"const": "0.1.0"},
+        "layout": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "metadata": {"type": "object"}
+  },
+  "additionalProperties": false
+}
