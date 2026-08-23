@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/repository-identity.schema.json",
+  "title": "AI-CONTEXT Repository Identity Record",
+  "type": "object",
+  "required": ["kind", "id"],
+  "properties": {
+    "kind": {"enum": ["commit", "tag", "release"]},
+    "id": {"type": "string", "minLength": 1},
+    "commit_sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40,64}$"},
+    "tree_sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40,64}$"},
+    "tag": {"type": "string", "minLength": 1},
+    "publication_state": {"enum": ["unverified", "published", "unpublished"]},
+    "release_basis": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "commit"}}},
+      "then": {"required": ["commit_sha"]}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "tag"}}},
+      "then": {"required": ["tag", "commit_sha"]}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "release"}}},
+      "then": {"required": ["tag", "commit_sha", "publication_state", "release_basis"]}
+    }
+  ],
+  "additionalProperties": false
+}
