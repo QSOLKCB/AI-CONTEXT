@@ -13,7 +13,7 @@
         "type": "object",
         "required": ["content_id", "observation_ids"],
         "properties": {
-          "content_id": {"type": "string", "pattern": "^content\\.sha256:[0-9a-f]{64}$"},
+          "content_id": {"type": "string", "pattern": "^content\\.(?:text|binary)\\.sha256:[0-9a-f]{64}$"},
           "observation_ids": {
             "type": "array",
             "items": {"type": "string", "pattern": "^obs\\.sha256:[0-9a-f]{64}$"},
