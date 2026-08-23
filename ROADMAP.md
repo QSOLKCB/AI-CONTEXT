@@ -7,38 +7,39 @@
 - [x] Define core record classes and sensitivity classes.
 - [x] Define SOURCE != MEMORY and RESTORED_CONTEXT != ORIGINAL_MODEL invariants.
 - [x] Define initial threat model.
-- [ ] Freeze protocol names and versioning rules for v0.1.
+- [x] Freeze initial protocol names and schema version at experimental v0.1.0.
 
 ## Phase 1 — Reference local workflow
 
-- [ ] Add dependency-light `ai_context.py` CLI.
-- [ ] `init`: create a safe private workspace with `.gitignore` and default policy.
-- [ ] `import`: hash source material and emit deterministic source observations plus an import receipt.
-- [ ] Safe ZIP handling with traversal, member-count, and byte limits.
-- [ ] Generic Markdown/text/JSON/JSONL import adapter.
-- [ ] ChatGPT-style export adapter.
-- [ ] Claude-style export adapter.
-- [ ] Local repository adapter with extension allowlist and `.git` exclusion.
-- [ ] Explicit promotion of a candidate record into canonical memory.
-- [ ] Secret-pattern screening before promotion.
-- [ ] Canonical-store validation.
-- [ ] Deterministic profile/tag bundle builder.
-- [ ] Bundle SHA-256 receipt.
-- [ ] Synthetic examples only; no real user data in repository.
+- [x] Add dependency-light `ai_context.py` CLI.
+- [x] `init`: create a safe private workspace with `.gitignore` and default policy.
+- [x] `import`: hash source material and emit source observations plus an import receipt.
+- [x] Safe ZIP handling with traversal, member-count, and byte limits.
+- [x] Generic Markdown/text/JSON/JSONL import adapter.
+- [x] ChatGPT-style export adapter.
+- [x] Claude-style export adapter.
+- [x] Local repository adapter with extension allowlist and `.git` exclusion.
+- [x] Explicit promotion of a candidate record into canonical memory.
+- [x] Secret-pattern screening before promotion.
+- [x] Canonical-store validation.
+- [x] Deterministic profile/tag bundle builder.
+- [x] Bundle SHA-256 receipt.
+- [x] Synthetic test data only; no real user data in repository.
 
 ## Phase 2 — Schemas and conformance
 
-- [ ] JSON Schema for workspace policy.
-- [ ] JSON Schema for import receipts.
-- [ ] JSON Schema for observations.
-- [ ] JSON Schema for canonical memory records.
-- [ ] JSON Schema for bundles.
-- [ ] Conformance fixtures for valid/invalid records.
-- [ ] Determinism tests for repeated bundle builds.
+- [x] JSON Schema for workspace policy.
+- [x] JSON Schema for import receipts.
+- [x] JSON Schema for observations.
+- [x] JSON Schema for canonical memory records.
+- [x] JSON Schema for bundles.
+- [ ] Standalone conformance fixture files for valid/invalid records.
+- [x] Determinism tests for repeated bundle builds.
 - [ ] Unknown adapter/schema rejection tests.
 - [ ] Duplicate import/idempotency tests.
-- [ ] Archive traversal and oversized-input tests.
-- [ ] Secret rejection tests.
+- [x] Archive traversal test.
+- [ ] Oversized-input tests.
+- [x] Secret rejection tests.
 - [ ] Privacy non-downgrade tests.
 - [ ] Tombstone/deletion propagation tests.
 
@@ -46,8 +47,10 @@
 
 Provider export formats are inputs, not stable APIs. Each adapter must carry an id/version and explicit parse status.
 
-- [ ] ChatGPT export fixtures and parser notes.
-- [ ] Claude export fixtures and parser notes.
+- [x] Synthetic ChatGPT-style export parser test.
+- [x] Synthetic Claude-style export parser test.
+- [ ] Provider format notes and drift fixtures for ChatGPT.
+- [ ] Provider format notes and drift fixtures for Claude.
 - [ ] Gemini export research and adapter if a stable export surface is available.
 - [ ] Grok/xAI export research and adapter if a stable export surface is available.
 - [ ] Generic browser-chat HTML/text archive adapter.
@@ -56,12 +59,12 @@ Provider export formats are inputs, not stable APIs. Each adapter must carry an 
 
 ## Phase 4 — Repository and document context
 
-- [ ] Git tree snapshot receipt format.
+- [ ] Git tree snapshot receipt format including commit identity when available.
 - [ ] Repository authority/precedence metadata.
 - [ ] Commit/tag/release identity records.
 - [ ] Markdown/document chunk observations with source line/range metadata.
-- [ ] PDF ingestion boundary through an external extractor rather than hidden parser assumptions.
-- [ ] Local folder adapter with MIME/extension policy.
+- [x] PDF ingestion boundary documented as external extraction rather than hidden parser assumptions.
+- [x] Local source-tree adapter with extension policy.
 - [ ] Optional Google Drive/export adapters.
 - [ ] Optional email archive adapter.
 - [ ] Duplicate-content collapse without destroying provenance.
@@ -74,7 +77,7 @@ Provider export formats are inputs, not stable APIs. Each adapter must carry an 
 - [ ] Conflict detection between canonical records and new observations.
 - [ ] Explicit supersession graph.
 - [ ] Confidence and verification update workflow.
-- [ ] Retention/expiry policy.
+- [ ] Retention/expiry policy enforcement.
 - [ ] Tombstone receipts.
 - [ ] “Why is this remembered?” provenance explanation.
 
@@ -84,19 +87,20 @@ No automated semantic extractor may write directly to canonical memory. It may o
 
 ## Phase 6 — Selective disclosure and routing
 
-- [ ] Named profiles such as `general`, `coding`, `research`, and user-defined profiles.
-- [ ] Tag selector.
-- [ ] Task selector.
-- [ ] Sensitivity ceiling.
+- [x] Profile format and default `general` profile.
+- [x] Tag selector.
+- [ ] Task/semantic selector.
+- [x] Sensitivity ceiling.
 - [ ] Provider/local-model disclosure policy.
-- [ ] Hard exclusions.
+- [ ] Hard exclusions beyond sensitivity/tag policy.
 - [ ] Dependency expansion with fail-closed ambiguity handling.
 - [ ] Minimum-context diagnostics explaining why each record entered a bundle.
 
 ## Phase 7 — Encrypted storage boundary
 
 - [ ] Storage-backend interface.
-- [ ] Document threat assumptions for filesystem encryption, age, encrypted SQLite, and hardware-backed stores.
+- [x] Document that encryption-at-rest is a storage-backend responsibility in the initial implementation.
+- [ ] Document comparative threat assumptions for filesystem encryption, age, encrypted SQLite, and hardware-backed stores.
 - [ ] Reference encrypted backend using a maintained cryptographic library.
 - [ ] Key rotation metadata.
 - [ ] Cryptographic erasure/deletion receipt strategy.
