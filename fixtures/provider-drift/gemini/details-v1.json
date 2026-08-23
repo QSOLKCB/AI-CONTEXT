@@ -1,0 +1,13 @@
+[
+  {
+    "header": "Gemini",
+    "title": "Used Gemini Apps",
+    "titleUrl": "https://gemini.google.com/app/c/gemini-conv-1",
+    "time": "2026-01-01T00:00:00Z",
+    "products": ["Gemini Apps"],
+    "details": [
+      {"name": "Request", "value": "Synthetic Gemini request."},
+      {"name": "Response", "value": "Synthetic Gemini response."}
+    ]
+  }
+]
