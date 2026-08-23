@@ -77,19 +77,21 @@ Provider export formats are inputs, not stable APIs. Each adapter must carry an 
 
 ## Phase 5 — Curation engine
 
-- [ ] Human review queue.
-- [ ] Candidate-memory generator that cannot self-promote.
-- [ ] Optional local-LLM curator interface.
-- [ ] Conflict detection between canonical records and new observations.
-- [ ] Explicit supersession graph.
-- [ ] Confidence and verification update workflow.
-- [ ] Retention/expiry policy enforcement.
-- [ ] Tombstone receipts.
-- [ ] “Why is this remembered?” provenance explanation.
+- [x] Human review queue.
+- [x] Candidate-memory generator that cannot self-promote.
+- [x] Optional local-LLM curator interface.
+- [x] Conflict detection between canonical records and new observations.
+- [x] Explicit supersession graph.
+- [x] Confidence and verification update workflow.
+- [x] Retention/expiry policy enforcement.
+- [x] Tombstone receipts.
+- [x] “Why is this remembered?” provenance explanation.
+
+**Phase 5 complete.** `tools/curation.py` implements a pending candidate queue, human/policy review decisions, explicit candidate application, advisory-only local-LLM request/response envelopes, semantic-key conflict detection, supersession edges, receipted confidence/verification/lifecycle mutations, retention policy enforcement, tombstone receipts, and provenance explanations that trace canonical memory back through curation, observations, import receipts, Phase 4 source snapshots, and content objects. `tools/validate_curation.py` validates candidate identities, review chains, application authority, mutation chains, supersession/tombstone receipts, and the rule that LLM suggestions never count as human/policy approval.
 
 ### Curation security gate
 
-No automated semantic extractor may write directly to canonical memory. It may only propose candidate records. Promotion remains governed by explicit user or policy authority.
+No automated semantic extractor or local LLM may write directly to canonical memory. It may only propose pending candidates or advisory suggestions. The reference `apply` path requires a latest explicit `approve` decision whose actor is `human` or `policy`. Content corrections create new canonical records plus supersession edges; curation mutations cannot silently rewrite content, sensitivity, record type, tags, or provenance.
 
 ## Phase 6 — Selective disclosure and routing
 
