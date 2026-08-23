@@ -7,23 +7,23 @@
   "properties": {
     "kind": {"enum": ["commit", "tag", "release"]},
     "id": {"type": "string", "minLength": 1},
-    "commit_sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40,64}$"},
-    "tree_sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40,64}$"},
+    "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "tree_sha": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
     "tag": {"type": "string", "minLength": 1},
     "publication_state": {"enum": ["unverified", "published", "unpublished"]},
     "release_basis": {"type": "string", "minLength": 1}
   },
   "allOf": [
     {
-      "if": {"properties": {"kind": {"const": "commit"}}},
+      "if": {"properties": {"kind": {"const": "commit"}}, "required": ["kind"]},
       "then": {"required": ["commit_sha"]}
     },
     {
-      "if": {"properties": {"kind": {"const": "tag"}}},
+      "if": {"properties": {"kind": {"const": "tag"}}, "required": ["kind"]},
       "then": {"required": ["tag", "commit_sha"]}
     },
     {
-      "if": {"properties": {"kind": {"const": "release"}}},
+      "if": {"properties": {"kind": {"const": "release"}}, "required": ["kind"]},
       "then": {"required": ["tag", "commit_sha", "publication_state", "release_basis"]}
     }
   ],
