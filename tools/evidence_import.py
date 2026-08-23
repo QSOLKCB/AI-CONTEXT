@@ -36,24 +36,34 @@ DOCUMENT_SUFFIXES = {
 EMAIL_SUFFIXES = {".eml", ".mbox", ".mbx"}
 
 
-def _dedup_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def dedup_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_id: dict[str, dict[str, Any]] = {}
     for row in rows:
         row_id = row.get("id")
         if not isinstance(row_id, str):
             raise ai_context.ContextError("generated row missing string id")
-        prior = by_id.get(row_id)
-        if prior is not None and ai_context.canonical_bytes(prior) != ai_context.canonical_bytes(row):
+        previous = by_id.get(row_id)
+        if previous is not None and ai_context.canonical_bytes(previous) != ai_context.canonical_bytes(row):
             raise ai_context.ContextError(f"generated id collision: {row_id}")
         by_id[row_id] = row
-    return [by_id[key] for key in sorted(by_id)]
+    return [by_id[row_id] for row_id in sorted(by_id)]
 
 
-def _merge_results(results: list[AdapterResult], *, source_type: str, adapter_id: str, layout_id: str, authority_class: str, authority_rank: int, snapshot_metadata: dict[str, Any]) -> AdapterResult:
+def merge_results(
+    results: list[AdapterResult],
+    *,
+    source_type: str,
+    adapter_id: str,
+    layout_id: str,
+    authority_class: str,
+    authority_rank: int,
+    snapshot_metadata: dict[str, Any],
+    extra_warnings: list[str] | None = None,
+) -> AdapterResult:
     if not results:
         raise ai_context.ContextError(f"{adapter_id} found no supported evidence")
     items: list[EvidenceItem] = []
-    warnings: list[str] = []
+    warnings = list(extra_warnings or [])
     for result in results:
         items.extend(result.items)
         warnings.extend(result.warnings)
@@ -71,41 +81,9 @@ def _merge_results(results: list[AdapterResult], *, source_type: str, adapter_id
     )
 
 
-def _zip_drive(source: Path, policy: dict[str, Any], max_lines: int) -> AdapterResult:
-    items: list[EvidenceItem] = []
-    warnings: list[str] = []
-    with zipfile.ZipFile(source) as archive:
-        infos = ai_context.safe_zip_infos(archive, policy)
-        drive_infos = [info for info in infos if "/drive/" in f"/{info.filename.casefold()}" or info.filename.casefold().startswith("drive/")]
-        selected = drive_infos or infos
-        for info in sorted(selected, key=lambda entry: entry.filename):
-            path = PurePosixPath(info.filename)
-            if path.name == "archive_browser.html":
-                continue
-            if path.suffix.casefold() not in DOCUMENT_SUFFIXES:
-                continue
-            raw = archive.read(info)
-            file_items, extra = items_for_bytes(raw, source_path=info.filename, max_lines=max_lines, metadata={"drive_export": True})
-            items.extend(file_items)
-            warnings.extend(extra)
-    return AdapterResult(
-        source_type="google-drive-export",
-        adapter_id="evidence-google-drive-export",
-        adapter_version=EVIDENCE_VERSION,
-        layout_id="google-takeout-drive-zip-v1" if drive_infos else "drive-export-zip-v1",
-        parse_status="partial" if warnings else "exact",
-        authority_class="drive_export_snapshot",
-        authority_rank=60,
-        items=items,
-        warnings=warnings,
-        snapshot_metadata={"official_export_surface": "Google Takeout/Drive", "drive_root_detected": bool(drive_infos)},
-    )
-
-
-def _document_file(path: Path, *, source_path: str | None = None, max_lines: int = 80) -> AdapterResult:
-    raw = path.read_bytes()
+def parse_document_file(path: Path, *, source_path: str | None = None, max_lines: int = 80) -> AdapterResult:
     rel = source_path or path.name
-    items, warnings = items_for_bytes(raw, source_path=rel, max_lines=max_lines)
+    items, warnings = items_for_bytes(path.read_bytes(), source_path=rel, max_lines=max_lines)
     return AdapterResult(
         source_type="document-file",
         adapter_id="evidence-document",
@@ -120,7 +98,7 @@ def _document_file(path: Path, *, source_path: str | None = None, max_lines: int
     )
 
 
-def _document_directory(root: Path, *, max_file_bytes: int, max_lines: int) -> AdapterResult:
+def parse_document_directory(root: Path, *, max_file_bytes: int, max_lines: int) -> AdapterResult:
     results: list[AdapterResult] = []
     warnings: list[str] = []
     for child in sorted(root.rglob("*"), key=lambda path: path.relative_to(root).as_posix()):
@@ -132,8 +110,8 @@ def _document_directory(root: Path, *, max_file_bytes: int, max_lines: int) -> A
         if child.stat().st_size > max_file_bytes:
             warnings.append(f"skipped oversized document: {rel}")
             continue
-        results.append(_document_file(child, source_path=rel, max_lines=max_lines))
-    merged = _merge_results(
+        results.append(parse_document_file(child, source_path=rel, max_lines=max_lines))
+    return merge_results(
         results,
         source_type="document-tree",
         adapter_id="evidence-document-tree",
@@ -141,21 +119,22 @@ def _document_directory(root: Path, *, max_file_bytes: int, max_lines: int) -> A
         authority_class="document_snapshot",
         authority_rank=50,
         snapshot_metadata={},
+        extra_warnings=warnings,
     )
-    return AdapterResult(**{**merged.__dict__, "warnings": [*warnings, *merged.warnings], "parse_status": "partial" if warnings or merged.warnings else "exact"})
 
 
-def _document_zip(source: Path, policy: dict[str, Any], max_lines: int) -> AdapterResult:
+def parse_document_zip(source: Path, policy: dict[str, Any], max_lines: int) -> AdapterResult:
     items: list[EvidenceItem] = []
     warnings: list[str] = []
     with zipfile.ZipFile(source) as archive:
-        infos = ai_context.safe_zip_infos(archive, policy)
-        for info in sorted(infos, key=lambda entry: entry.filename):
+        for info in sorted(ai_context.safe_zip_infos(archive, policy), key=lambda entry: entry.filename):
             if PurePosixPath(info.filename).suffix.casefold() not in DOCUMENT_SUFFIXES:
                 continue
             file_items, extra = items_for_bytes(archive.read(info), source_path=info.filename, max_lines=max_lines)
             items.extend(file_items)
             warnings.extend(extra)
+    if not items:
+        raise ai_context.ContextError("document ZIP contained no supported evidence")
     return AdapterResult(
         source_type="document-archive",
         adapter_id="evidence-document-archive",
@@ -170,7 +149,47 @@ def _document_zip(source: Path, policy: dict[str, Any], max_lines: int) -> Adapt
     )
 
 
-def _email_directory(root: Path, *, max_file_bytes: int) -> AdapterResult:
+def parse_drive_zip(source: Path, policy: dict[str, Any], max_lines: int) -> AdapterResult:
+    items: list[EvidenceItem] = []
+    warnings: list[str] = []
+    with zipfile.ZipFile(source) as archive:
+        infos = ai_context.safe_zip_infos(archive, policy)
+        drive_infos = [
+            info for info in infos
+            if "/drive/" in f"/{info.filename.casefold()}" or info.filename.casefold().startswith("drive/")
+        ]
+        for info in sorted(drive_infos or infos, key=lambda entry: entry.filename):
+            path = PurePosixPath(info.filename)
+            if path.name == "archive_browser.html" or path.suffix.casefold() not in DOCUMENT_SUFFIXES:
+                continue
+            file_items, extra = items_for_bytes(
+                archive.read(info),
+                source_path=info.filename,
+                max_lines=max_lines,
+                metadata={"drive_export": True},
+            )
+            items.extend(file_items)
+            warnings.extend(extra)
+    if not items:
+        raise ai_context.ContextError("Drive export contained no supported evidence")
+    return AdapterResult(
+        source_type="google-drive-export",
+        adapter_id="evidence-google-drive-export",
+        adapter_version=EVIDENCE_VERSION,
+        layout_id="google-takeout-drive-zip-v1" if drive_infos else "drive-export-zip-v1",
+        parse_status="partial" if warnings else "exact",
+        authority_class="drive_export_snapshot",
+        authority_rank=60,
+        items=items,
+        warnings=warnings,
+        snapshot_metadata={
+            "official_export_surface": "Google Takeout/Drive",
+            "drive_root_detected": bool(drive_infos),
+        },
+    )
+
+
+def parse_email_directory(root: Path, *, max_file_bytes: int) -> AdapterResult:
     results: list[AdapterResult] = []
     warnings: list[str] = []
     for child in sorted(root.rglob("*"), key=lambda path: path.relative_to(root).as_posix()):
@@ -182,7 +201,7 @@ def _email_directory(root: Path, *, max_file_bytes: int) -> AdapterResult:
             warnings.append(f"skipped oversized email archive file: {child.relative_to(root).as_posix()}")
             continue
         results.append(parse_email_file(child))
-    merged = _merge_results(
+    return merge_results(
         results,
         source_type="email-archive",
         adapter_id="evidence-email-archive",
@@ -190,28 +209,27 @@ def _email_directory(root: Path, *, max_file_bytes: int) -> AdapterResult:
         authority_class="email_archive_message",
         authority_rank=65,
         snapshot_metadata={"standards": ["RFC 5322/MIME"], "gmail_label_header": "X-Gmail-Labels"},
+        extra_warnings=warnings,
     )
-    return AdapterResult(**{**merged.__dict__, "warnings": [*warnings, *merged.warnings], "parse_status": "partial" if warnings or merged.warnings else "exact"})
 
 
-def _parse_mbox_bytes(raw: bytes, label: str) -> AdapterResult:
+def parse_mbox_bytes(raw: bytes, label: str) -> AdapterResult:
     fd, name = tempfile.mkstemp(prefix="ai-context-mail-", suffix=".mbox")
     os.close(fd)
-    path = Path(name)
+    temp = Path(name)
     try:
-        path.write_bytes(raw)
-        result = parse_email_file(path)
+        temp.write_bytes(raw)
+        result = parse_email_file(temp)
         items = [EvidenceItem(**{**item.__dict__, "source_path": label}) for item in result.items]
         return AdapterResult(**{**result.__dict__, "items": items})
     finally:
-        path.unlink(missing_ok=True)
+        temp.unlink(missing_ok=True)
 
 
-def _email_zip(source: Path, policy: dict[str, Any]) -> AdapterResult:
+def parse_email_zip(source: Path, policy: dict[str, Any]) -> AdapterResult:
     results: list[AdapterResult] = []
     with zipfile.ZipFile(source) as archive:
-        infos = ai_context.safe_zip_infos(archive, policy)
-        for info in sorted(infos, key=lambda entry: entry.filename):
+        for info in sorted(ai_context.safe_zip_infos(archive, policy), key=lambda entry: entry.filename):
             suffix = PurePosixPath(info.filename).suffix.casefold()
             if suffix == ".eml":
                 message = BytesParser(policy=email_policy.default).parsebytes(archive.read(info))
@@ -230,8 +248,8 @@ def _email_zip(source: Path, policy: dict[str, Any]) -> AdapterResult:
                         snapshot_metadata={},
                     ))
             elif suffix in {".mbox", ".mbx"}:
-                results.append(_parse_mbox_bytes(archive.read(info), info.filename))
-    return _merge_results(
+                results.append(parse_mbox_bytes(archive.read(info), info.filename))
+    return merge_results(
         results,
         source_type="email-archive",
         adapter_id="evidence-email-archive",
@@ -242,7 +260,7 @@ def _email_zip(source: Path, policy: dict[str, Any]) -> AdapterResult:
     )
 
 
-def _snapshot_core(result: AdapterResult, source_hash: str) -> dict[str, Any]:
+def snapshot_core(result: AdapterResult, source_hash: str) -> dict[str, Any]:
     return {
         "protocol": "AI-CONTEXT/SOURCE-SNAPSHOT",
         "schema_version": ai_context.PROTOCOL_VERSION,
@@ -262,7 +280,7 @@ def _snapshot_core(result: AdapterResult, source_hash: str) -> dict[str, Any]:
     }
 
 
-def _content_object(item: EvidenceItem) -> dict[str, Any]:
+def content_object(item: EvidenceItem) -> dict[str, Any]:
     if item.content_kind == "text":
         text = item.text or ""
         raw = text.encode("utf-8")
@@ -272,7 +290,6 @@ def _content_object(item: EvidenceItem) -> dict[str, Any]:
             "protocol": "AI-CONTEXT/CONTENT",
             "schema_version": ai_context.PROTOCOL_VERSION,
             "content_kind": "text",
-            "media_type": item.media_type,
             "sha256": digest,
             "byte_length": len(raw),
             "text": text,
@@ -285,21 +302,20 @@ def _content_object(item: EvidenceItem) -> dict[str, Any]:
         "protocol": "AI-CONTEXT/CONTENT",
         "schema_version": ai_context.PROTOCOL_VERSION,
         "content_kind": "binary_ref",
-        "media_type": item.media_type,
         "sha256": digest,
         "byte_length": item.byte_length,
     }
 
 
-def _observations(result: AdapterResult, receipt_id: str, snapshot_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def rows_for_result(result: AdapterResult, receipt_id: str, snapshot_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     contents: list[dict[str, Any]] = []
     observations: list[dict[str, Any]] = []
     for item in result.items:
-        content = _content_object(item)
+        content = content_object(item)
         contents.append(content)
-        range_meta = None
+        source_range = None
         if item.line_start is not None and item.line_end is not None:
-            range_meta = {
+            source_range = {
                 "kind": item.range_kind or "line",
                 "start": item.line_start,
                 "end": item.line_end,
@@ -314,24 +330,22 @@ def _observations(result: AdapterResult, receipt_id: str, snapshot_id: str) -> t
             metadata={
                 **item.metadata,
                 "source_path": item.source_path,
-                "source_range": range_meta,
+                "source_range": source_range,
+                "media_type": item.media_type,
                 "title": item.title,
                 "source_snapshot_id": snapshot_id,
                 "authority_class": result.authority_class,
                 "authority_rank": result.authority_rank,
             },
         ))
-    return _dedup_rows(contents), _dedup_rows(observations)
+    return dedup_rows(contents), dedup_rows(observations)
 
 
-def _rebuild_content_index(workspace: Path) -> str:
-    observations = ai_context.read_jsonl(workspace / "staging" / "observations.jsonl")
+def rebuild_content_index(workspace: Path) -> str:
     groups: dict[str, set[str]] = {}
-    for obs in observations:
+    for obs in ai_context.read_jsonl(workspace / "staging" / "observations.jsonl"):
         content = obs.get("content")
-        if not isinstance(content, dict):
-            continue
-        content_id = content.get("content_id")
+        content_id = content.get("content_id") if isinstance(content, dict) else None
         obs_id = obs.get("id")
         if isinstance(content_id, str) and isinstance(obs_id, str):
             groups.setdefault(content_id, set()).add(obs_id)
@@ -344,11 +358,14 @@ def _rebuild_content_index(workspace: Path) -> str:
         ],
     }
     digest = ai_context.sha256_bytes(ai_context.canonical_bytes(payload))
-    ai_context.write_json(workspace / "staging" / "content-index.json", {**payload, "canonical_payload_sha256": digest})
+    ai_context.write_json(
+        workspace / "staging" / "content-index.json",
+        {**payload, "canonical_payload_sha256": digest},
+    )
     return digest
 
 
-def _parse(args: argparse.Namespace, source: Path, policy: dict[str, Any]) -> AdapterResult:
+def parse_source(args: argparse.Namespace, source: Path, policy: dict[str, Any]) -> AdapterResult:
     max_file_bytes = int(policy["max_repo_file_bytes"])
     if args.adapter == "repo":
         return parse_repository(source, max_file_bytes=max_file_bytes, max_lines=args.chunk_lines)
@@ -356,21 +373,29 @@ def _parse(args: argparse.Namespace, source: Path, policy: dict[str, Any]) -> Ad
         if source.is_dir():
             return parse_drive_directory(source, max_file_bytes=max_file_bytes, max_lines=args.chunk_lines)
         if zipfile.is_zipfile(source):
-            return _zip_drive(source, policy, args.chunk_lines)
-        raise ai_context.ContextError("drive-export adapter requires a Takeout/export directory or ZIP")
+            return parse_drive_zip(source, policy, args.chunk_lines)
+        raise ai_context.ContextError("drive-export requires a Takeout/export directory or ZIP")
     if args.adapter == "email":
         if source.is_dir():
-            return _email_directory(source, max_file_bytes=max_file_bytes)
+            return parse_email_directory(source, max_file_bytes=max_file_bytes)
         if zipfile.is_zipfile(source):
-            return _email_zip(source, policy)
+            return parse_email_zip(source, policy)
         return parse_email_file(source)
     if args.adapter == "document":
         if source.is_dir():
-            return _document_directory(source, max_file_bytes=max_file_bytes, max_lines=args.chunk_lines)
+            return parse_document_directory(source, max_file_bytes=max_file_bytes, max_lines=args.chunk_lines)
         if zipfile.is_zipfile(source):
-            return _document_zip(source, policy, args.chunk_lines)
-        return _document_file(source, max_lines=args.chunk_lines)
+            return parse_document_zip(source, policy, args.chunk_lines)
+        return parse_document_file(source, max_lines=args.chunk_lines)
     raise ai_context.ContextError(f"unknown evidence adapter: {args.adapter}")
+
+
+def preflight(path: Path, rows: list[dict[str, Any]]) -> None:
+    existing = {row.get("id"): row for row in ai_context.read_jsonl(path)}
+    for row in rows:
+        previous = existing.get(row["id"])
+        if previous is not None and ai_context.canonical_bytes(previous) != ai_context.canonical_bytes(row):
+            raise ai_context.ContextError(f"id collision with different evidence payload: {row['id']}")
 
 
 def cmd_import(args: argparse.Namespace) -> None:
@@ -382,24 +407,20 @@ def cmd_import(args: argparse.Namespace) -> None:
         raise ai_context.ContextError(f"source does not exist: {source}")
 
     source_hash = ai_context.source_identity(source, policy)
-    result = _parse(args, source, policy)
-    snapshot_core = _snapshot_core(result, source_hash)
-    snapshot_hash = ai_context.sha256_bytes(ai_context.canonical_bytes(snapshot_core))
-    snapshot_id = f"snapshot.sha256:{snapshot_hash}"
-    snapshot = {
-        "id": snapshot_id,
-        **snapshot_core,
-        "captured_at": ai_context.utc_now(),
-    }
+    result = parse_source(args, source, policy)
+    core = snapshot_core(result, source_hash)
+    snapshot_id = f"snapshot.sha256:{ai_context.sha256_bytes(ai_context.canonical_bytes(core))}"
+    snapshot = {"id": snapshot_id, **core}
     requested_adapter = f"evidence:{args.adapter}:{snapshot_id}"
     receipt_id = ai_context.receipt_id_for(source_hash, requested_adapter)
-    contents, observations = _observations(result, receipt_id, snapshot_id)
+    contents, observations = rows_for_result(result, receipt_id, snapshot_id)
 
-    post_parse_hash = ai_context.source_identity(source, policy)
-    if post_parse_hash != source_hash:
+    if ai_context.source_identity(source, policy) != source_hash:
         raise ai_context.ContextError("source changed during evidence import; no state was written")
 
-    receipt = {
+    receipts_path = workspace / "receipts" / "imports.jsonl"
+    previous_receipts = {row.get("id"): row for row in ai_context.read_jsonl(receipts_path)}
+    receipt = previous_receipts.get(receipt_id) or {
         "id": receipt_id,
         "protocol": "AI-CONTEXT/IMPORT",
         "schema_version": ai_context.PROTOCOL_VERSION,
@@ -417,37 +438,20 @@ def cmd_import(args: argparse.Namespace) -> None:
         "content_object_count": len(contents),
     }
 
-    # Preflight collisions before mutating any file.
-    for path, rows in [
+    targets = [
         (workspace / "receipts" / "source-snapshots.jsonl", [snapshot]),
         (workspace / "staging" / "content.jsonl", contents),
         (workspace / "staging" / "observations.jsonl", observations),
-        (workspace / "receipts" / "imports.jsonl", [receipt]),
-    ]:
-        existing = {row.get("id"): row for row in ai_context.read_jsonl(path)}
-        for row in rows:
-            prior = existing.get(row["id"])
-            if prior is not None:
-                compare_prior = dict(prior)
-                compare_row = dict(row)
-                if path.name in {"source-snapshots.jsonl", "imports.jsonl"}:
-                    compare_prior.pop("captured_at", None)
-                    compare_prior.pop("imported_at", None)
-                    compare_row.pop("captured_at", None)
-                    compare_row.pop("imported_at", None)
-                if ai_context.canonical_bytes(compare_prior) != ai_context.canonical_bytes(compare_row):
-                    raise ai_context.ContextError(f"id collision with different evidence payload: {row['id']}")
+        (receipts_path, [receipt]),
+    ]
+    for path, rows in targets:
+        preflight(path, rows)
 
-    ai_context.append_jsonl_unique(workspace / "receipts" / "source-snapshots.jsonl", [snapshot])
-    ai_context.append_jsonl_unique(workspace / "staging" / "content.jsonl", contents)
-    appended_observations = ai_context.append_jsonl_unique(workspace / "staging" / "observations.jsonl", observations)
-
-    receipts_path = workspace / "receipts" / "imports.jsonl"
-    existing_receipts = {row.get("id"): row for row in ai_context.read_jsonl(receipts_path)}
-    if receipt_id in existing_receipts:
-        receipt = existing_receipts[receipt_id]
-    appended_receipt = ai_context.append_jsonl_unique(receipts_path, [receipt])
-    index_sha = _rebuild_content_index(workspace)
+    ai_context.append_jsonl_unique(targets[0][0], targets[0][1])
+    ai_context.append_jsonl_unique(targets[1][0], targets[1][1])
+    appended_observations = ai_context.append_jsonl_unique(targets[2][0], targets[2][1])
+    appended_receipt = ai_context.append_jsonl_unique(targets[3][0], targets[3][1])
+    index_sha = rebuild_content_index(workspace)
 
     print(json.dumps({
         "receipt_id": receipt_id,
