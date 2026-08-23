@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/tombstone-receipt.schema.json",
+  "title": "AI-CONTEXT Tombstone Receipt",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "memory_id", "mutation_id", "reason", "actor", "before_sha256", "after_sha256", "created_at"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^tombstone\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/TOMBSTONE"},
+    "schema_version": {"const": "0.1.0"},
+    "memory_id": {"type": "string", "minLength": 1},
+    "mutation_id": {"type": "string", "pattern": "^mutation\\.sha256:[0-9a-f]{64}$"},
+    "reason": {"type": "string", "minLength": 1},
+    "actor": {"type": "object", "required": ["type", "label"], "properties": {"type": {"enum": ["human", "policy"]}, "label": {"type": "string", "minLength": 1}}, "additionalProperties": false},
+    "before_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "after_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}
