@@ -162,8 +162,12 @@ def _parse_grok(source: Path, policy: dict[str, Any]) -> ParseResult:
     if source.is_dir():
         target = _select_single_file(_find_directory_files(source, {name}), name)
         return parse_grok_export(ai_context.load_json(target))
-    if source.name.casefold() != name:
-        raise ai_context.ContextError("Grok adapter requires prod-grok-backend.json or an account export ZIP/directory")
+    # An explicitly selected Grok source file does not need to preserve xAI's
+    # original basename. For direct-file imports, the parsed JSON shape is the
+    # authority. Basename matching remains required only for ZIP/directory
+    # discovery, where it prevents grabbing an unrelated JSON file.
+    if source.suffix.casefold() != ".json":
+        raise ai_context.ContextError("Grok adapter requires JSON data or an account export ZIP/directory")
     return parse_grok_export(ai_context.load_json(source))
 
 
