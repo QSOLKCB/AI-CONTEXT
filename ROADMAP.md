@@ -51,13 +51,15 @@ Provider export formats are inputs, not stable APIs. Each adapter must carry an 
 
 - [x] Synthetic ChatGPT-style export parser test.
 - [x] Synthetic Claude-style export parser test.
-- [ ] Provider format notes and drift fixtures for ChatGPT.
-- [ ] Provider format notes and drift fixtures for Claude.
-- [ ] Gemini export research and adapter if a stable export surface is available.
-- [ ] Grok/xAI export research and adapter if a stable export surface is available.
-- [ ] Generic browser-chat HTML/text archive adapter.
-- [ ] Adapter plugin interface for community sources.
-- [ ] Migration fixtures for provider format drift.
+- [x] Provider format notes and drift fixtures for ChatGPT.
+- [x] Provider format notes and drift fixtures for Claude.
+- [x] Gemini export research and adapter for the official Takeout/My Activity surface, with variable schema treated as partial/unstable.
+- [x] Grok/xAI export research and adapter for the official account-data surface, with `prod-grok-backend.json` treated as undocumented/unstable.
+- [x] Generic browser-chat HTML/text archive adapter.
+- [x] Data-only adapter plugin interface for community JSON sources.
+- [x] Migration fixtures and machine-readable manifest for provider format drift.
+
+**Phase 3 complete.** ChatGPT and Claude retain the Phase 1 import path but are now protected by exact/partial/reject migration fixtures. Higher-churn providers use `tools/provider_import.py`, which normalizes Gemini Takeout, Grok account exports, browser chat archives, and data-only community plugin mappings into the same Phase 1 staging/receipt contract. Provider layout identity is recorded separately from adapter id/version. Unknown layouts fail closed; known lossy layouts remain explicitly `partial`. Provider-private reasoning-like fields are not silently promoted into ordinary staging observations.
 
 ## Phase 4 — Repository and document context
 
