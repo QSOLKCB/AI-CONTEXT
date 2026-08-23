@@ -13,7 +13,6 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from html.parser import HTMLParser
-from pathlib import Path
 from typing import Any
 
 ADAPTER_PROTOCOL_VERSION = "0.1.0"
@@ -130,10 +129,7 @@ def parse_claude(data: Any) -> ParseResult:
             if not isinstance(message, dict):
                 continue
             raw = message.get("text")
-            if isinstance(raw, list):
-                text = "\n".join(_stringify(part) for part in raw).strip()
-            else:
-                text = _stringify(raw).strip()
+            text = "\n".join(_stringify(part) for part in raw).strip() if isinstance(raw, list) else _stringify(raw).strip()
             if not text:
                 continue
             messages.append(ParsedMessage(
@@ -280,11 +276,7 @@ def parse_gemini_takeout(data: Any) -> ParseResult:
                     if text:
                         response_parts.append((html_index, text))
             if response_parts:
-                event_messages.append((
-                    "assistant",
-                    "\n".join(text for _, text in response_parts),
-                    "safeHtmlItem:response",
-                ))
+                event_messages.append(("assistant", "\n".join(text for _, text in response_parts), "safeHtmlItem:response"))
 
         if not event_messages:
             warnings.append(f"Gemini activity entry had no recognized message payload: {event_index}")
@@ -351,9 +343,12 @@ def parse_grok_export(data: Any) -> ParseResult:
             if any(key in response for key in ("thinking_trace", "agent_thinking_traces")):
                 omitted_private_reasoning = True
             text = response.get("message")
+            has_attachments = bool(response.get("generated_image_urls") or response.get("file_attachments"))
             if not isinstance(text, str) or not text.strip():
-                if response.get("generated_image_urls") or response.get("file_attachments"):
+                if has_attachments:
                     warnings.append(f"Grok response had attachment-only content: {conv_id}:{response_index}")
+                else:
+                    warnings.append(f"unrecognized Grok response payload: {conv_id}:{response_index}")
                 continue
             sender = str(response.get("sender") or "assistant")
             actor = "user" if sender.casefold() in {"human", "user"} else "assistant"
@@ -454,6 +449,12 @@ def parse_role_prefixed_text(text: str, *, source_id: str = "browser-chat") -> P
     )
 
 
+_HTML_VOID_ELEMENTS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+    "param", "source", "track", "wbr",
+}
+
+
 class _RoleHTMLParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -480,14 +481,25 @@ class _RoleHTMLParser(HTMLParser):
         return None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.casefold()
         if self.capture_role is not None:
-            self.capture_depth += 1
+            if tag not in _HTML_VOID_ELEMENTS:
+                self.capture_depth += 1
             return
         role = self.role_for(tag, attrs)
         if role is not None:
             self.capture_role = role
             self.capture_depth = 1
             self.capture_parts = []
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self.capture_role is None:
+            role = self.role_for(tag.casefold(), attrs)
+            if role is not None:
+                self.capture_role = role
+                self.capture_depth = 1
+                self.capture_parts = []
+                self.handle_endtag(tag)
 
     def handle_endtag(self, tag: str) -> None:
         if self.capture_role is None:
@@ -569,31 +581,63 @@ def _dot_get(value: Any, path: str) -> Any:
     return current
 
 
+def _reject_unknown_keys(mapping: dict[str, Any], allowed: set[str], label: str) -> None:
+    unknown = sorted(set(mapping) - allowed)
+    if unknown:
+        raise AdapterError(f"plugin {label} has unknown properties: {', '.join(unknown)}")
+
+
 def validate_plugin_descriptor(descriptor: Any) -> dict[str, Any]:
+    """Validate the complete published data-only plugin contract without runtime dependencies."""
     if not isinstance(descriptor, dict):
         raise AdapterError("plugin descriptor must be a JSON object")
+    _reject_unknown_keys(
+        descriptor,
+        {"protocol", "schema_version", "id", "version", "description", "input", "conversation", "message", "role_map"},
+        "descriptor",
+    )
     if descriptor.get("protocol") != "AI-CONTEXT/ADAPTER-PLUGIN":
         raise AdapterError("invalid plugin protocol")
     if descriptor.get("schema_version") != ADAPTER_PROTOCOL_VERSION:
         raise AdapterError("unsupported plugin schema version")
     if not isinstance(descriptor.get("id"), str) or not descriptor["id"].strip():
         raise AdapterError("plugin id must be a non-empty string")
-    if not isinstance(descriptor.get("version"), str) or not re.fullmatch(r"\d+\.\d+\.\d+", descriptor["version"]):
+    if not isinstance(descriptor.get("version"), str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", descriptor["version"]):
         raise AdapterError("plugin version must be semantic x.y.z")
+    if "description" in descriptor and not isinstance(descriptor["description"], str):
+        raise AdapterError("plugin description must be a string")
+
     input_spec = descriptor.get("input")
     conversation = descriptor.get("conversation")
     message = descriptor.get("message")
-    if not isinstance(input_spec, dict) or input_spec.get("kind") != "json":
+    if not isinstance(input_spec, dict) or not isinstance(conversation, dict) or not isinstance(message, dict):
+        raise AdapterError("plugin requires input, conversation, and message mapping objects")
+
+    _reject_unknown_keys(input_spec, {"kind", "root_path", "filename"}, "input")
+    _reject_unknown_keys(conversation, {"messages_path", "id_path", "title_path"}, "conversation")
+    _reject_unknown_keys(message, {"text_path", "actor_path", "id_path", "timestamp_path"}, "message")
+
+    if input_spec.get("kind") != "json":
         raise AdapterError("plugin input.kind must be json")
-    if not isinstance(conversation, dict) or not isinstance(message, dict):
-        raise AdapterError("plugin requires conversation and message mapping objects")
-    for key in ("root_path",):
-        if not isinstance(input_spec.get(key, ""), str):
-            raise AdapterError(f"plugin input.{key} must be a string")
-    if not isinstance(conversation.get("messages_path"), str):
-        raise AdapterError("plugin conversation.messages_path must be a string")
-    if not isinstance(message.get("text_path"), str):
-        raise AdapterError("plugin message.text_path must be a string")
+    if not isinstance(input_spec.get("root_path"), str):
+        raise AdapterError("plugin input.root_path must be a string")
+    if "filename" in input_spec and (not isinstance(input_spec["filename"], str) or not input_spec["filename"]):
+        raise AdapterError("plugin input.filename must be a non-empty string")
+    if not isinstance(conversation.get("messages_path"), str) or not conversation["messages_path"]:
+        raise AdapterError("plugin conversation.messages_path must be a non-empty string")
+    for key in ("id_path", "title_path"):
+        if key in conversation and not isinstance(conversation[key], str):
+            raise AdapterError(f"plugin conversation.{key} must be a string")
+    if not isinstance(message.get("text_path"), str) or not message["text_path"]:
+        raise AdapterError("plugin message.text_path must be a non-empty string")
+    for key in ("actor_path", "id_path", "timestamp_path"):
+        if key in message and not isinstance(message[key], str):
+            raise AdapterError(f"plugin message.{key} must be a string")
+
+    role_map = descriptor.get("role_map")
+    if role_map is not None:
+        if not isinstance(role_map, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in role_map.items()):
+            raise AdapterError("plugin role_map must be an object with string values")
     return descriptor
 
 
@@ -602,7 +646,7 @@ def parse_plugin_json(data: Any, descriptor: dict[str, Any]) -> ParseResult:
     input_spec = descriptor["input"]
     conversation_spec = descriptor["conversation"]
     message_spec = descriptor["message"]
-    root = _dot_get(data, input_spec.get("root_path", ""))
+    root = _dot_get(data, input_spec["root_path"])
     if not isinstance(root, list):
         raise AdapterError("plugin root_path must resolve to an array")
     messages: list[ParsedMessage] = []
@@ -620,9 +664,19 @@ def parse_plugin_json(data: Any, descriptor: dict[str, Any]) -> ParseResult:
         if not isinstance(raw_messages, list):
             warnings.append(f"plugin messages path was not an array: {conv_index}")
             continue
-        conv_id = _stringify(_dot_get(conv, conversation_spec.get("id_path", "id"))) if conversation_spec.get("id_path", "id") else f"conversation-{conv_index}"
+
+        id_path = conversation_spec.get("id_path")
+        if isinstance(id_path, str) and id_path:
+            try:
+                conv_id = _stringify(_dot_get(conv, id_path)).strip()
+            except AdapterError:
+                warnings.append(f"plugin conversation id path missing: {conv_index}")
+                conv_id = ""
+        else:
+            conv_id = ""
         if not conv_id:
             conv_id = f"conversation-{conv_index}"
+
         title = ""
         title_path = conversation_spec.get("title_path")
         if isinstance(title_path, str) and title_path:
@@ -630,6 +684,7 @@ def parse_plugin_json(data: Any, descriptor: dict[str, Any]) -> ParseResult:
                 title = _stringify(_dot_get(conv, title_path))
             except AdapterError:
                 warnings.append(f"plugin title path missing: {conv_id}")
+
         for msg_index, item in enumerate(raw_messages):
             if not isinstance(item, dict):
                 warnings.append(f"plugin skipped non-object message: {conv_id}:{msg_index}")
@@ -640,7 +695,9 @@ def parse_plugin_json(data: Any, descriptor: dict[str, Any]) -> ParseResult:
                 warnings.append(f"plugin text path missing: {conv_id}:{msg_index}")
                 continue
             if not text:
+                warnings.append(f"plugin message text was empty: {conv_id}:{msg_index}")
                 continue
+
             actor = None
             actor_path = message_spec.get("actor_path")
             if isinstance(actor_path, str) and actor_path:
@@ -649,6 +706,7 @@ def parse_plugin_json(data: Any, descriptor: dict[str, Any]) -> ParseResult:
                     actor = str(role_map.get(raw_actor, raw_actor)) if raw_actor else None
                 except AdapterError:
                     warnings.append(f"plugin actor path missing: {conv_id}:{msg_index}")
+
             timestamp = None
             timestamp_path = message_spec.get("timestamp_path")
             if isinstance(timestamp_path, str) and timestamp_path:
@@ -656,13 +714,15 @@ def parse_plugin_json(data: Any, descriptor: dict[str, Any]) -> ParseResult:
                     timestamp = _stringify(_dot_get(item, timestamp_path)) or None
                 except AdapterError:
                     warnings.append(f"plugin timestamp path missing: {conv_id}:{msg_index}")
+
             source_local_id = f"{conv_id}:{msg_index}"
-            id_path = message_spec.get("id_path")
-            if isinstance(id_path, str) and id_path:
+            message_id_path = message_spec.get("id_path")
+            if isinstance(message_id_path, str) and message_id_path:
                 try:
-                    source_local_id = _stringify(_dot_get(item, id_path)) or source_local_id
+                    source_local_id = _stringify(_dot_get(item, message_id_path)) or source_local_id
                 except AdapterError:
                     warnings.append(f"plugin message id path missing: {conv_id}:{msg_index}")
+
             messages.append(ParsedMessage(
                 text=text,
                 actor=actor,
