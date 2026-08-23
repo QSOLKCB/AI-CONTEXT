@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/curation-candidate.schema.json",
+  "title": "AI-CONTEXT Candidate Memory Proposal",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "generator", "proposed_memory", "semantic_key", "supersedes", "parent_candidate_id", "created_at"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^candidate\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/CANDIDATE"},
+    "schema_version": {"const": "0.1.0"},
+    "generator": {
+      "type": "object",
+      "required": ["type", "id", "version"],
+      "properties": {
+        "type": {"enum": ["deterministic", "manual", "local_llm"]},
+        "id": {"type": "string", "minLength": 1},
+        "version": {"const": "0.1.0"},
+        "runtime": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "proposed_memory": {
+      "type": "object",
+      "required": ["record_type", "content", "sensitivity", "epistemic_state", "confidence", "approval", "source_refs", "tags", "lifecycle", "notes"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "record_type": {"enum": ["fact", "preference", "project_state", "decision", "claim", "hypothesis", "instruction", "relationship", "publication", "event", "environment", "provenance_policy"]},
+        "content": {"type": "object"},
+        "sensitivity": {"enum": ["public", "private", "restricted"]},
+        "epistemic_state": {"enum": ["observed", "retrieved", "parsed", "inferred", "remembered", "user_asserted", "verified", "unknown"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "approval": {"const": "pending"},
+        "source_refs": {"type": "array", "items": {"type": "string", "pattern": "^obs\\.sha256:[0-9a-f]{64}$"}, "uniqueItems": true},
+        "tags": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "lifecycle": {
+          "type": "object",
+          "required": ["state", "expires_at", "supersedes"],
+          "properties": {
+            "state": {"const": "active"},
+            "expires_at": {"type": ["string", "null"]},
+            "supersedes": {"type": ["string", "null"]}
+          },
+          "additionalProperties": false
+        },
+        "notes": {"type": "string"},
+        "created_at": {"type": ["string", "null"]},
+        "last_verified": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "semantic_key": {"type": ["string", "null"]},
+    "supersedes": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "parent_candidate_id": {"type": ["string", "null"], "pattern": "^candidate\\.sha256:[0-9a-f]{64}$"},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}
