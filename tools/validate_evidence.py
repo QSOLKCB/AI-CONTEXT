@@ -12,6 +12,15 @@ from typing import Any
 
 import ai_context
 
+AUTHORITY_RANKS = {
+    "git_clean_head": 95,
+    "git_dirty_worktree": 85,
+    "source_tree_snapshot": 70,
+    "email_archive_message": 65,
+    "drive_export_snapshot": 60,
+    "document_snapshot": 50,
+}
+
 
 def require(condition: bool, message: str) -> None:
     if not condition:
@@ -20,13 +29,18 @@ def require(condition: bool, message: str) -> None:
 
 def validate_snapshot(snapshot: dict[str, Any]) -> None:
     sid = snapshot.get("id")
-    require(isinstance(sid, str) and re.fullmatch(r"snapshot\.sha256:[0-9a-f]{64}", sid) is not None, f"invalid source snapshot id: {sid}")
+    require(
+        isinstance(sid, str) and re.fullmatch(r"snapshot\.sha256:[0-9a-f]{64}", sid) is not None,
+        f"invalid source snapshot id: {sid}",
+    )
     require(snapshot.get("protocol") == "AI-CONTEXT/SOURCE-SNAPSHOT", f"invalid source snapshot protocol: {sid}")
     require(snapshot.get("schema_version") == ai_context.PROTOCOL_VERSION, f"unsupported source snapshot schema: {sid}")
     authority = snapshot.get("authority")
     require(isinstance(authority, dict), f"source snapshot missing authority: {sid}")
-    require(isinstance(authority.get("class"), str) and authority["class"], f"source snapshot authority class invalid: {sid}")
-    require(isinstance(authority.get("rank"), int) and 0 <= authority["rank"] <= 100, f"source snapshot authority rank invalid: {sid}")
+    authority_class = authority.get("class")
+    require(authority_class in AUTHORITY_RANKS, f"source snapshot authority class invalid: {sid}")
+    require(authority.get("rank") == AUTHORITY_RANKS[authority_class], f"source snapshot authority rank/class mismatch: {sid}")
+    require(authority.get("domain") == "source_evidence", f"source snapshot authority domain invalid: {sid}")
     core = {key: value for key, value in snapshot.items() if key != "id"}
     expected = f"snapshot.sha256:{ai_context.sha256_bytes(ai_context.canonical_bytes(core))}"
     require(sid == expected, f"source snapshot id/hash mismatch: {sid}")
@@ -36,28 +50,51 @@ def validate_snapshot(snapshot: dict[str, Any]) -> None:
         git = metadata["git"]
         head = git.get("head_commit")
         if head is not None:
-            require(isinstance(head, str) and re.fullmatch(r"[0-9a-f]{40,64}", head) is not None, f"invalid git head commit: {sid}")
+            require(
+                isinstance(head, str) and re.fullmatch(r"[0-9a-f]{40,64}", head) is not None,
+                f"invalid git head commit: {sid}",
+            )
         identities = git.get("identity_records", [])
         require(isinstance(identities, list), f"git identity_records must be an array: {sid}")
         for identity in identities:
             require(isinstance(identity, dict), f"invalid repository identity record: {sid}")
-            require(identity.get("kind") in {"commit", "tag", "release"}, f"unknown repository identity kind: {sid}")
+            kind = identity.get("kind")
+            require(kind in {"commit", "tag", "release"}, f"unknown repository identity kind: {sid}")
             require(isinstance(identity.get("id"), str) and identity["id"], f"repository identity missing id: {sid}")
-            if identity.get("kind") == "release":
-                require(identity.get("publication_state") in {"unverified", "published", "unpublished"}, f"release identity missing publication state: {sid}")
+            commit_sha = identity.get("commit_sha")
+            require(
+                isinstance(commit_sha, str) and re.fullmatch(r"[0-9a-f]{40,64}", commit_sha) is not None,
+                f"repository identity missing valid commit_sha: {sid}",
+            )
+            if kind == "release":
+                require(
+                    identity.get("publication_state") in {"unverified", "published", "unpublished"},
+                    f"release identity missing publication state: {sid}",
+                )
 
 
 def validate_content(content: dict[str, Any]) -> None:
     cid = content.get("id")
-    require(isinstance(cid, str) and re.fullmatch(r"content\.sha256:[0-9a-f]{64}", cid) is not None, f"invalid content id: {cid}")
+    require(
+        isinstance(cid, str)
+        and re.fullmatch(r"content\.(?:text|binary)\.sha256:[0-9a-f]{64}", cid) is not None,
+        f"invalid content id: {cid}",
+    )
     require(content.get("protocol") == "AI-CONTEXT/CONTENT", f"invalid content protocol: {cid}")
     require(content.get("schema_version") == ai_context.PROTOCOL_VERSION, f"unsupported content schema: {cid}")
     digest = content.get("sha256")
-    require(isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest) is not None, f"invalid content sha256: {cid}")
-    require(cid == f"content.sha256:{digest}", f"content id/hash mismatch: {cid}")
+    require(
+        isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest) is not None,
+        f"invalid content sha256: {cid}",
+    )
     kind = content.get("content_kind")
     require(kind in {"text", "binary_ref"}, f"unknown content kind: {cid}")
-    require(isinstance(content.get("byte_length"), int) and content["byte_length"] >= 0, f"invalid content byte_length: {cid}")
+    expected_prefix = "content.text.sha256:" if kind == "text" else "content.binary.sha256:"
+    require(cid == f"{expected_prefix}{digest}", f"content id/hash/kind mismatch: {cid}")
+    require(
+        isinstance(content.get("byte_length"), int) and content["byte_length"] >= 0,
+        f"invalid content byte_length: {cid}",
+    )
     if kind == "text":
         text = content.get("text")
         require(isinstance(text, str), f"text content missing text: {cid}")
@@ -105,6 +142,16 @@ def cmd_validate(workspace: Path) -> dict[str, Any]:
         require(content["id"] not in content_ids, f"duplicate content object: {content['id']}")
         content_ids.add(content["id"])
 
+    receipt_snapshot: dict[str, str] = {}
+    for receipt in receipts:
+        rid = receipt.get("id")
+        snapshot_id = receipt.get("source_snapshot_id")
+        if snapshot_id is None:
+            continue
+        require(isinstance(rid, str), "evidence receipt missing id")
+        require(snapshot_id in snapshot_ids, f"receipt references missing source snapshot: {rid}")
+        receipt_snapshot[rid] = snapshot_id
+
     evidence_counts: dict[str, int] = {}
     content_by_receipt: dict[str, set[str]] = {}
     for obs in observations:
@@ -119,6 +166,11 @@ def cmd_validate(workspace: Path) -> dict[str, Any]:
         require(snapshot_id in snapshot_ids, f"evidence observation references missing source snapshot: {obs.get('id')}")
         receipt_id = obs.get("source_receipt_id")
         require(isinstance(receipt_id, str), f"evidence observation missing receipt: {obs.get('id')}")
+        require(receipt_id in receipt_snapshot, f"evidence observation references non-evidence receipt: {obs.get('id')}")
+        require(
+            snapshot_id == receipt_snapshot[receipt_id],
+            f"evidence observation snapshot does not match receipt snapshot: {obs.get('id')}",
+        )
         evidence_counts[receipt_id] = evidence_counts.get(receipt_id, 0) + 1
         content_by_receipt.setdefault(receipt_id, set()).add(content_id)
 
@@ -127,9 +179,14 @@ def cmd_validate(workspace: Path) -> dict[str, Any]:
         if snapshot_id is None:
             continue
         rid = receipt.get("id")
-        require(snapshot_id in snapshot_ids, f"receipt references missing source snapshot: {rid}")
-        require(receipt.get("observation_count") == evidence_counts.get(rid, 0), f"evidence receipt observation_count mismatch: {rid}")
-        require(receipt.get("content_object_count") == len(content_by_receipt.get(rid, set())), f"evidence receipt content_object_count mismatch: {rid}")
+        require(
+            receipt.get("observation_count") == evidence_counts.get(rid, 0),
+            f"evidence receipt observation_count mismatch: {rid}",
+        )
+        require(
+            receipt.get("content_object_count") == len(content_by_receipt.get(rid, set())),
+            f"evidence receipt content_object_count mismatch: {rid}",
+        )
 
     index_path = workspace / "staging" / "content-index.json"
     if content_ids:
@@ -142,7 +199,9 @@ def cmd_validate(workspace: Path) -> dict[str, Any]:
         require(digest == expected_digest, "content index hash mismatch")
         require(payload == expected_index(observations), "content index does not match observation provenance graph")
 
-    duplicate_groups = sum(1 for group in expected_index(observations)["groups"] if len(group["observation_ids"]) > 1)
+    duplicate_groups = sum(
+        1 for group in expected_index(observations)["groups"] if len(group["observation_ids"]) > 1
+    )
     return {
         "status": "ok",
         "source_snapshots": len(snapshots),
