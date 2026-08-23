@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/curator-response.schema.json",
+  "title": "AI-CONTEXT Local LLM Curator Response",
+  "type": "object",
+  "required": ["protocol", "schema_version", "candidate_id", "recommendation", "rationale", "model"],
+  "properties": {
+    "protocol": {"const": "AI-CONTEXT/CURATOR-RESPONSE"},
+    "schema_version": {"const": "0.1.0"},
+    "candidate_id": {"type": "string", "pattern": "^candidate\\.sha256:[0-9a-f]{64}$"},
+    "recommendation": {"enum": ["approve", "reject", "revise", "unknown"]},
+    "rationale": {"type": "string"},
+    "model": {
+      "type": "object",
+      "required": ["id", "runtime"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "runtime": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "proposed_memory": {"$ref": "curation-candidate.schema.json#/$defs/proposed_memory"},
+    "semantic_key": {"type": ["string", "null"]}
+  },
+  "additionalProperties": false
+}
