@@ -1,0 +1,18 @@
+[
+  {
+    "header": "Gemini",
+    "title": "Used Gemini Apps",
+    "titleUrl": "https://gemini.google.com/app/c/gemini-conv-2",
+    "time": "2026-01-01T00:01:00Z",
+    "products": ["Gemini Apps"],
+    "userInteractions": [
+      {
+        "userInteraction": {
+          "endpoint": 2,
+          "request": "{\"text\":\"Synthetic serialized request.\"}",
+          "response": "{\"text\":\"Synthetic serialized response.\"}"
+        }
+      }
+    ]
+  }
+]
