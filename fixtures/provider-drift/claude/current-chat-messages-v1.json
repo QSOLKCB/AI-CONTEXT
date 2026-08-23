@@ -1,0 +1,20 @@
+[
+  {
+    "uuid": "claude-conv-1",
+    "name": "Synthetic current layout",
+    "chat_messages": [
+      {
+        "uuid": "claude-msg-1",
+        "sender": "human",
+        "created_at": "2026-01-01T00:00:00Z",
+        "text": "Hello from the Claude fixture."
+      },
+      {
+        "uuid": "claude-msg-2",
+        "sender": "assistant",
+        "created_at": "2026-01-01T00:00:01Z",
+        "text": "Synthetic assistant response."
+      }
+    ]
+  }
+]
