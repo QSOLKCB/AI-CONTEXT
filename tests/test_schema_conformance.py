@@ -1,3 +1,4 @@
+import hashlib
 import json
 import unittest
 from pathlib import Path
@@ -20,6 +21,20 @@ CASES = {
 
 def load_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def canonical_bytes(value):
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def sha256(value):
+    return hashlib.sha256(canonical_bytes(value)).hexdigest()
 
 
 class SchemaConformanceTests(unittest.TestCase):
@@ -55,6 +70,14 @@ class SchemaConformanceTests(unittest.TestCase):
                 instance = load_json(FIXTURES / "invalid" / f"{name}.json")
                 with self.assertRaises(ValidationError):
                     self.validator(name).validate(instance)
+
+    def test_valid_bundle_fixture_has_runtime_consistent_hashes(self):
+        bundle = load_json(FIXTURES / "valid" / "bundle.json")
+        records = sorted(bundle["records"], key=lambda record: record["id"])
+        self.assertEqual(bundle["canonical_store_sha256"], sha256(records))
+
+        payload = {key: value for key, value in bundle.items() if key != "canonical_payload_sha256"}
+        self.assertEqual(bundle["canonical_payload_sha256"], sha256(payload))
 
 
 if __name__ == "__main__":
