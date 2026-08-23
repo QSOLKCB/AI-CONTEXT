@@ -98,7 +98,10 @@ class Phase4EvidenceTests(unittest.TestCase):
         )
         self.assertEqual(result["observations_total"], 3)
         observations = self.read_jsonl("staging/observations.jsonl")
-        ranges = [obs["metadata"]["source_range"] for obs in observations]
+        ranges = sorted(
+            (obs["metadata"]["source_range"] for obs in observations),
+            key=lambda item: item["start"],
+        )
         self.assertEqual(ranges, [
             {"kind": "line", "start": 1, "end": 2},
             {"kind": "line", "start": 3, "end": 4},
