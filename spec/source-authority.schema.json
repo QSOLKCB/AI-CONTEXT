@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/source-authority.schema.json",
+  "title": "AI-CONTEXT Source Evidence Authority",
+  "type": "object",
+  "required": ["class", "rank", "domain"],
+  "properties": {
+    "class": {
+      "enum": [
+        "git_clean_head",
+        "git_dirty_worktree",
+        "source_tree_snapshot",
+        "drive_export_snapshot",
+        "email_archive_message",
+        "document_snapshot"
+      ]
+    },
+    "rank": {"type": "integer", "minimum": 0, "maximum": 100},
+    "domain": {"const": "source_evidence"}
+  },
+  "additionalProperties": false
+}
