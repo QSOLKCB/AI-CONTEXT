@@ -58,7 +58,7 @@ class Phase5CodexHardeningTests(unittest.TestCase):
         )
         return json.loads(result.stdout)["candidate_id"]
 
-    def review(self, candidate, *, resolution="none", supersede=None):
+    def review(self, candidate, *, resolution="none", supersede=None, expect=0):
         args = [
             "review", self.workspace,
             "--candidate", candidate,
@@ -69,7 +69,7 @@ class Phase5CodexHardeningTests(unittest.TestCase):
         ]
         if supersede:
             args += ["--supersede", supersede]
-        return run_cli(CURATION, *args)
+        return run_cli(CURATION, *args, expect=expect)
 
     def apply(self, candidate, expect=0):
         return run_cli(CURATION, "apply", self.workspace, "--candidate", candidate, expect=expect)
@@ -138,8 +138,8 @@ class Phase5CodexHardeningTests(unittest.TestCase):
         lower = self.propose(obs, "claim:sensitivity", sensitivity="private")
         result = json.loads(run_cli(CURATION, "conflicts", self.workspace, "--candidate", lower).stdout)
         self.assertEqual(len(result["conflicts"]), 1)
-        failed = self.review(lower)
-        self.assertEqual(failed.returncode, 2)
+        failed = self.review(lower, expect=2)
+        self.assertIn("explicit conflict resolution", failed.stderr)
 
     def test_invalid_non_null_expiry_is_rejected_before_candidate_creation(self):
         obs = self.import_obs("llm.txt", "LLM evidence.\n")
