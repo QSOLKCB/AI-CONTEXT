@@ -1,0 +1,20 @@
+[
+  {
+    "id": "chatgpt-conv-partial",
+    "title": "Synthetic partial layout",
+    "mapping": {
+      "node-user": {
+        "message": {
+          "id": "chatgpt-partial-msg-1",
+          "author": {"role": "user"},
+          "create_time": 1,
+          "content": {"parts": ["Recognized message."]}
+        }
+      }
+    }
+  },
+  {
+    "future_shape": true,
+    "messages": []
+  }
+]
