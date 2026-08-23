@@ -62,13 +62,25 @@ def _merge(results: list[ParseResult], *, source_type: str, adapter_id: str) -> 
     )
 
 
-def _find_directory_files(root: Path, names: set[str]) -> list[Path]:
+def _is_git_internal(path: Path, root: Path) -> bool:
+    return ".git" in path.relative_to(root).parts
+
+
+def _enforce_directory_file_limit(path: Path, policy: dict[str, Any], label: str) -> None:
+    size = path.stat().st_size
+    limit = int(policy["max_repo_file_bytes"])
+    if size > limit:
+        raise ai_context.ContextError(f"{label} exceeds max_repo_file_bytes ({size} > {limit}): {path}")
+
+
+def _find_directory_files(root: Path, names: set[str], policy: dict[str, Any]) -> list[Path]:
     matches: list[Path] = []
     lowered = {name.casefold() for name in names}
     for child in sorted(root.rglob("*"), key=lambda path: path.relative_to(root).as_posix()):
-        if child.is_symlink() or not child.is_file():
+        if child.is_symlink() or not child.is_file() or _is_git_internal(child, root):
             continue
         if child.name.casefold() in lowered:
+            _enforce_directory_file_limit(child, policy, "provider input file")
             matches.append(child)
     return matches
 
@@ -79,6 +91,20 @@ def _select_single_file(matches: list[Path], label: str) -> Path:
     if len(matches) > 1:
         raise ai_context.ContextError(f"multiple {label} files found; import a narrower directory or the exact file")
     return matches[0]
+
+
+def _select_preferred_directory_file(matches: list[Path], label: str, preferred_terms: tuple[str, ...]) -> Path:
+    if not matches:
+        raise ai_context.ContextError(f"{label} file not found")
+    if len(matches) == 1:
+        return matches[0]
+    preferred = [
+        path for path in matches
+        if any(term in path.as_posix().casefold() for term in preferred_terms)
+    ]
+    if len(preferred) == 1:
+        return preferred[0]
+    raise ai_context.ContextError(f"multiple {label} files found; import a narrower directory or the exact file")
 
 
 def _zip_member_by_basename(infos: list[zipfile.ZipInfo], basenames: set[str]) -> zipfile.ZipInfo:
@@ -122,12 +148,17 @@ def _plugin_json_from_source(
             return _strict_json_bytes(archive.read(info), info.filename), info.filename
     if source.is_dir():
         if filename:
-            target = _select_single_file(_find_directory_files(source, {str(filename)}), f"plugin {filename}")
+            target = _select_single_file(
+                _find_directory_files(source, {str(filename)}, policy),
+                f"plugin {filename}",
+            )
         else:
-            candidates = [
-                child for child in sorted(source.rglob("*.json"))
-                if child.is_file() and not child.is_symlink()
-            ]
+            candidates = []
+            for child in sorted(source.rglob("*.json"), key=lambda path: path.relative_to(source).as_posix()):
+                if child.is_symlink() or not child.is_file() or _is_git_internal(child, source):
+                    continue
+                _enforce_directory_file_limit(child, policy, "plugin input file")
+                candidates.append(child)
             target = _select_single_file(candidates, "plugin JSON")
         return ai_context.load_json(target), target.relative_to(source).as_posix()
     if source.suffix.casefold() != ".json":
@@ -144,7 +175,11 @@ def _parse_gemini(source: Path, policy: dict[str, Any]) -> ParseResult:
             data = _strict_json_bytes(archive.read(info), info.filename)
         return parse_gemini_takeout(data)
     if source.is_dir():
-        target = _select_single_file(_find_directory_files(source, names), "Gemini MyActivity.json")
+        target = _select_preferred_directory_file(
+            _find_directory_files(source, names, policy),
+            "Gemini MyActivity.json",
+            ("gemini apps",),
+        )
         return parse_gemini_takeout(ai_context.load_json(target))
     if source.suffix.casefold() != ".json":
         raise ai_context.ContextError("Gemini adapter requires MyActivity.json or a Takeout ZIP/directory")
@@ -160,14 +195,10 @@ def _parse_grok(source: Path, policy: dict[str, Any]) -> ParseResult:
             data = _strict_json_bytes(archive.read(info), info.filename)
         return parse_grok_export(data)
     if source.is_dir():
-        target = _select_single_file(_find_directory_files(source, {name}), name)
+        target = _select_single_file(_find_directory_files(source, {name}, policy), name)
         return parse_grok_export(ai_context.load_json(target))
-    # An explicitly selected Grok source file does not need to preserve xAI's
-    # original basename. For direct-file imports, the parsed JSON shape is the
-    # authority. Basename matching remains required only for ZIP/directory
-    # discovery, where it prevents grabbing an unrelated JSON file.
     if source.suffix.casefold() != ".json":
-        raise ai_context.ContextError("Grok adapter requires JSON data or an account export ZIP/directory")
+        raise ai_context.ContextError("Grok adapter requires a JSON file or an account export ZIP/directory")
     return parse_grok_export(ai_context.load_json(source))
 
 
@@ -186,6 +217,7 @@ def _browser_result_for_bytes(raw: bytes, name: str) -> ParseResult:
 def _parse_browser_chat(source: Path, policy: dict[str, Any]) -> ParseResult:
     supported = {".html", ".htm", ".txt", ".md", ".markdown"}
     results: list[ParseResult] = []
+    directory_warnings: list[str] = []
     if source.is_file() and zipfile.is_zipfile(source):
         with zipfile.ZipFile(source) as archive:
             infos = ai_context.safe_zip_infos(archive, policy)
@@ -194,11 +226,28 @@ def _parse_browser_chat(source: Path, policy: dict[str, Any]) -> ParseResult:
                     results.append(_browser_result_for_bytes(archive.read(info), info.filename))
         return _merge(results, source_type="browser-chat-archive", adapter_id="browser-chat")
     if source.is_dir():
+        limit = int(policy["max_repo_file_bytes"])
         for child in sorted(source.rglob("*"), key=lambda path: path.relative_to(source).as_posix()):
-            if child.is_symlink() or not child.is_file() or child.suffix.casefold() not in supported:
+            if child.is_symlink() or not child.is_file() or _is_git_internal(child, source) or child.suffix.casefold() not in supported:
                 continue
-            results.append(_browser_result_for_bytes(child.read_bytes(), child.relative_to(source).as_posix()))
-        return _merge(results, source_type="browser-chat-archive", adapter_id="browser-chat")
+            size = child.stat().st_size
+            rel = child.relative_to(source).as_posix()
+            if size > limit:
+                directory_warnings.append(f"skipped oversized browser-chat file: {rel}")
+                continue
+            results.append(_browser_result_for_bytes(child.read_bytes(), rel))
+        merged = _merge(results, source_type="browser-chat-archive", adapter_id="browser-chat")
+        if directory_warnings:
+            return ParseResult(
+                source_type=merged.source_type,
+                adapter_id=merged.adapter_id,
+                adapter_version=merged.adapter_version,
+                layout_id=merged.layout_id,
+                parse_status="partial",
+                messages=merged.messages,
+                warnings=[*merged.warnings, *directory_warnings],
+            )
+        return merged
     if source.suffix.casefold() not in supported:
         raise ai_context.ContextError("browser-chat adapter supports HTML, HTM, TXT, Markdown, ZIP, or directories containing them")
     return _browser_result_for_bytes(source.read_bytes(), source.name)
@@ -223,6 +272,24 @@ def _to_observations(result: ParseResult, receipt_id: str) -> list[dict[str, Any
             },
         ))
     return observations
+
+
+def _deduplicate_observations(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    unique: list[dict[str, Any]] = []
+    by_id: dict[str, bytes] = {}
+    for observation in observations:
+        oid = observation.get("id")
+        if not isinstance(oid, str):
+            raise ai_context.ContextError("provider observation missing string id")
+        rendered = ai_context.canonical_bytes(observation)
+        previous = by_id.get(oid)
+        if previous is not None:
+            if previous != rendered:
+                raise ai_context.ContextError(f"provider observation id collision: {oid}")
+            continue
+        by_id[oid] = rendered
+        unique.append(observation)
+    return unique
 
 
 def cmd_import(args: argparse.Namespace) -> None:
@@ -281,7 +348,7 @@ def cmd_import(args: argparse.Namespace) -> None:
     if post_parse_hash != source_hash:
         raise ai_context.ContextError("source changed during provider import; no observations or receipt were written")
 
-    observations = _to_observations(result, receipt_id)
+    observations = _deduplicate_observations(_to_observations(result, receipt_id))
     receipt = {
         "id": receipt_id,
         "protocol": "AI-CONTEXT/IMPORT",
