@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/observation.schema.json",
+  "title": "AI-CONTEXT Staging Observation",
+  "type": "object",
+  "required": [
+    "id",
+    "protocol",
+    "schema_version",
+    "source_receipt_id",
+    "kind",
+    "content",
+    "content_sha256"
+  ],
+  "properties": {
+    "id": {"type": "string", "pattern": "^obs\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/OBSERVATION"},
+    "schema_version": {"const": "0.1.0"},
+    "source_receipt_id": {"type": "string", "pattern": "^import\\.sha256:[0-9a-f]{64}$"},
+    "kind": {"type": "string", "minLength": 1},
+    "source_local_id": {"type": ["string", "null"]},
+    "actor": {"type": ["string", "null"]},
+    "timestamp": {"type": ["string", "null"]},
+    "content": {"type": "object"},
+    "content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "metadata": {"type": "object"}
+  },
+  "additionalProperties": false
+}
