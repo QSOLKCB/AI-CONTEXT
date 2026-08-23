@@ -1,0 +1,20 @@
+# AI-CONTEXT framework repository must never contain real private workspaces.
+workspace/
+workspaces/
+vault/
+imports/
+staging/
+memory/private/
+bundles/private/
+*.private.json
+*.private.jsonl
+*.private.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local editor / OS
+.DS_Store
+*.swp
