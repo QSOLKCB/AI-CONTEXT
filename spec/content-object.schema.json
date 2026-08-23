@@ -5,7 +5,7 @@
   "type": "object",
   "required": ["id", "protocol", "schema_version", "content_kind", "sha256", "byte_length"],
   "properties": {
-    "id": {"type": "string", "pattern": "^content\\.sha256:[0-9a-f]{64}$"},
+    "id": {"type": "string", "pattern": "^content\\.(?:text|binary)\\.sha256:[0-9a-f]{64}$"},
     "protocol": {"const": "AI-CONTEXT/CONTENT"},
     "schema_version": {"const": "0.1.0"},
     "content_kind": {"enum": ["text", "binary_ref"]},
@@ -15,9 +15,15 @@
   },
   "allOf": [
     {
-      "if": {"properties": {"content_kind": {"const": "text"}}},
-      "then": {"required": ["text"]},
-      "else": {"not": {"required": ["text"]}}
+      "if": {"properties": {"content_kind": {"const": "text"}}, "required": ["content_kind"]},
+      "then": {
+        "required": ["text"],
+        "properties": {"id": {"pattern": "^content\\.text\\.sha256:[0-9a-f]{64}$"}}
+      },
+      "else": {
+        "not": {"required": ["text"]},
+        "properties": {"id": {"pattern": "^content\\.binary\\.sha256:[0-9a-f]{64}$"}}
+      }
     }
   ],
   "additionalProperties": false
