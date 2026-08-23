@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/memory-record.schema.json",
+  "title": "AI-CONTEXT Canonical Memory Record",
+  "type": "object",
+  "required": [
+    "id",
+    "protocol",
+    "schema_version",
+    "record_type",
+    "content",
+    "sensitivity",
+    "epistemic_state",
+    "confidence",
+    "approval",
+    "source_refs",
+    "tags",
+    "lifecycle"
+  ],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "protocol": {"const": "AI-CONTEXT/MEMORY"},
+    "schema_version": {"const": "0.1.0"},
+    "record_type": {
+      "enum": [
+        "fact",
+        "preference",
+        "project_state",
+        "decision",
+        "claim",
+        "hypothesis",
+        "instruction",
+        "relationship",
+        "publication",
+        "event",
+        "environment",
+        "provenance_policy"
+      ]
+    },
+    "content": {"type": "object"},
+    "sensitivity": {"enum": ["public", "private", "restricted", "secret"]},
+    "epistemic_state": {
+      "enum": ["observed", "retrieved", "parsed", "inferred", "remembered", "user_asserted", "verified", "unknown"]
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "approval": {"enum": ["approved", "rejected", "pending"]},
+    "source_refs": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "tags": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "lifecycle": {
+      "type": "object",
+      "required": ["state"],
+      "properties": {
+        "state": {"enum": ["active", "expired", "superseded", "tombstoned"]},
+        "expires_at": {"type": ["string", "null"], "format": "date-time"},
+        "supersedes": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "created_at": {"type": ["string", "null"], "format": "date-time"},
+    "last_verified": {"type": ["string", "null"], "format": "date-time"},
+    "notes": {"type": "string"}
+  },
+  "additionalProperties": false
+}
