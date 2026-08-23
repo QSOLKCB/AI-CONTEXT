@@ -10,8 +10,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
+import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -67,8 +69,30 @@ class ContextError(RuntimeError):
     pass
 
 
+def reject_nonfinite_constant(value: str) -> None:
+    raise ContextError(f"non-finite JSON number is forbidden: {value}")
+
+
+def json_loads_strict(text: str, *, label: str = "JSON") -> Any:
+    try:
+        return json.loads(text, parse_constant=reject_nonfinite_constant)
+    except ContextError:
+        raise
+    except json.JSONDecodeError as exc:
+        raise ContextError(f"cannot parse {label}: {exc}") from exc
+
+
 def canonical_bytes(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    try:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ContextError(f"value is not canonical JSON: {exc}") from exc
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -89,31 +113,39 @@ def utc_now() -> str:
 
 def load_json(path: Path) -> Any:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ContextError(f"cannot parse JSON {path}: {exc}") from exc
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ContextError(f"cannot read JSON {path}: {exc}") from exc
+    return json_loads_strict(text, label=str(path))
 
 
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    try:
+        rendered = json.dumps(
+            value,
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+            allow_nan=False,
+        ) + "\n"
+    except (TypeError, ValueError) as exc:
+        raise ContextError(f"cannot serialize JSON {path}: {exc}") from exc
+    path.write_text(rendered, encoding="utf-8", newline="\n")
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ContextError(f"cannot read JSONL {path}: {exc}") from exc
     rows: list[dict[str, Any]] = []
-    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    for line_no, line in enumerate(lines, 1):
         if not line.strip():
             continue
-        try:
-            value = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ContextError(f"invalid JSONL {path}:{line_no}: {exc}") from exc
+        value = json_loads_strict(line, label=f"{path}:{line_no}")
         if not isinstance(value, dict):
             raise ContextError(f"invalid JSONL object {path}:{line_no}")
         rows.append(value)
@@ -121,24 +153,47 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def append_jsonl_unique(path: Path, rows: Iterable[dict[str, Any]], key: str = "id") -> int:
+    """Preflight the complete batch and atomically replace the JSONL file on success."""
     path.parent.mkdir(parents=True, exist_ok=True)
     existing_rows = read_jsonl(path)
-    existing = {row.get(key): canonical_bytes(row) for row in existing_rows if row.get(key)}
-    appended = 0
-    with path.open("a", encoding="utf-8", newline="\n") as handle:
-        for row in rows:
-            row_id = row.get(key)
-            if not row_id:
-                raise ContextError(f"row missing {key}")
-            rendered = canonical_bytes(row)
-            if row_id in existing:
-                if existing[row_id] != rendered:
-                    raise ContextError(f"id collision with different payload: {row_id}")
-                continue
-            handle.write(rendered.decode("utf-8") + "\n")
-            existing[row_id] = rendered
-            appended += 1
-    return appended
+    existing: dict[Any, bytes] = {}
+    for row in existing_rows:
+        row_id = row.get(key)
+        if row_id:
+            existing[row_id] = canonical_bytes(row)
+
+    additions: list[dict[str, Any]] = []
+    staged = dict(existing)
+    for row in rows:
+        row_id = row.get(key)
+        if not row_id:
+            raise ContextError(f"row missing {key}")
+        rendered = canonical_bytes(row)
+        if row_id in staged:
+            if staged[row_id] != rendered:
+                raise ContextError(f"id collision with different payload: {row_id}")
+            continue
+        staged[row_id] = rendered
+        additions.append(row)
+
+    if not additions:
+        return 0
+
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            for row in [*existing_rows, *additions]:
+                handle.write(canonical_bytes(row).decode("utf-8") + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    except Exception:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+        raise
+    return len(additions)
 
 
 def load_policy(workspace: Path) -> dict[str, Any]:
@@ -150,7 +205,10 @@ def load_policy(workspace: Path) -> dict[str, Any]:
         raise ContextError("invalid workspace policy")
     if policy.get("schema_version") != PROTOCOL_VERSION:
         raise ContextError("unsupported workspace policy schema version")
-    return {**DEFAULT_POLICY, **policy}
+    merged = {**DEFAULT_POLICY, **policy}
+    if merged.get("default_sensitivity") not in SENSITIVITY_RANK:
+        raise ContextError("invalid policy default_sensitivity")
+    return merged
 
 
 def ensure_workspace(workspace: Path) -> None:
@@ -279,7 +337,7 @@ def stringify_content_part(part: Any) -> str:
     if isinstance(part, dict):
         if isinstance(part.get("text"), str):
             return part["text"]
-        return json.dumps(part, sort_keys=True, ensure_ascii=False)
+        return canonical_bytes(part).decode("utf-8")
     if part is None:
         return ""
     return str(part)
@@ -295,6 +353,7 @@ def parse_chatgpt(data: Any, receipt_id: str) -> tuple[list[dict[str, Any]], lis
         if not isinstance(conv, dict) or not isinstance(conv.get("mapping"), dict):
             continue
         recognized += 1
+        before = len(observations)
         conv_id = str(conv.get("id") or f"conversation-{conv_index}")
         title = str(conv.get("title") or "")
         nodes = []
@@ -323,6 +382,8 @@ def parse_chatgpt(data: Any, receipt_id: str) -> tuple[list[dict[str, Any]], lis
                 timestamp=timestamp,
                 metadata={"conversation_id": conv_id, "provider_layout": "chatgpt-conversations-mapping"},
             ))
+        if len(observations) == before:
+            warnings.append(f"recognized ChatGPT conversation had no parseable messages: {conv_id}")
     if recognized == 0:
         raise ContextError("ChatGPT layout not recognized")
     if recognized != len(data):
@@ -340,6 +401,7 @@ def parse_claude(data: Any, receipt_id: str) -> tuple[list[dict[str, Any]], list
         if not isinstance(conv, dict) or not isinstance(conv.get("chat_messages"), list):
             continue
         recognized += 1
+        before = len(observations)
         conv_id = str(conv.get("uuid") or conv.get("id") or f"conversation-{conv_index}")
         title = str(conv.get("name") or conv.get("title") or "")
         for msg_index, message in enumerate(conv["chat_messages"]):
@@ -361,6 +423,8 @@ def parse_claude(data: Any, receipt_id: str) -> tuple[list[dict[str, Any]], list
                 timestamp=str(message.get("created_at")) if message.get("created_at") is not None else None,
                 metadata={"conversation_id": conv_id, "provider_layout": "claude-chat-messages"},
             ))
+        if len(observations) == before:
+            warnings.append(f"recognized Claude conversation had no parseable messages: {conv_id}")
     if recognized == 0:
         raise ContextError("Claude layout not recognized")
     if recognized != len(data):
@@ -377,12 +441,7 @@ def parse_json_value(value: Any, receipt_id: str, source_local_id: str) -> list[
     return [observation(receipt_id, "json_value", {"value": value}, source_local_id=source_local_id)]
 
 
-def parse_text_bytes(
-    data: bytes,
-    receipt_id: str,
-    source_local_id: str,
-    kind: str = "document",
-) -> dict[str, Any] | None:
+def parse_text_bytes(data: bytes, receipt_id: str, source_local_id: str, kind: str = "document") -> dict[str, Any] | None:
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
@@ -415,33 +474,28 @@ def provider_status(warnings: list[str]) -> str:
     return "partial" if warnings else "exact"
 
 
-def import_zip(
-    path: Path,
-    adapter: str,
-    receipt_id: str,
-    policy: dict[str, Any],
-) -> tuple[str, str, list[dict[str, Any]], list[str]]:
+def import_zip(path: Path, adapter: str, receipt_id: str, policy: dict[str, Any]) -> tuple[str, str, list[dict[str, Any]], list[str]]:
     warnings: list[str] = []
     with zipfile.ZipFile(path) as archive:
         infos = safe_zip_infos(archive, policy)
         conversations = find_zip_conversations(infos)
-
         if adapter in {"chatgpt", "claude"} and conversations is None:
             raise ContextError(f"{adapter} adapter expected conversations.json in archive")
-
         if conversations is not None and adapter in {"auto", "chatgpt", "claude"}:
             try:
-                with archive.open(conversations, "r") as handle:
-                    data = json.load(handle)
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise ContextError(f"cannot parse {conversations.filename}: {exc}") from exc
+                data = json_loads_strict(
+                    archive.read(conversations).decode("utf-8"),
+                    label=conversations.filename,
+                )
+            except UnicodeDecodeError as exc:
+                raise ContextError(f"cannot decode {conversations.filename}: {exc}") from exc
             chosen = detect_json_adapter(data) if adapter == "auto" else adapter
             if chosen == "chatgpt":
                 obs, extra = parse_chatgpt(data, receipt_id)
-                return "chatgpt-export", provider_status(extra), obs, warnings + extra
+                return "chatgpt-export", provider_status(extra), obs, extra
             if chosen == "claude":
                 obs, extra = parse_claude(data, receipt_id)
-                return "claude-export", provider_status(extra), obs, warnings + extra
+                return "claude-export", provider_status(extra), obs, extra
 
         observations: list[dict[str, Any]] = []
         for info in sorted(infos, key=lambda item: item.filename):
@@ -451,11 +505,13 @@ def import_zip(
             raw = archive.read(info)
             if suffix == ".json":
                 try:
-                    value = json.loads(raw.decode("utf-8"))
-                except (UnicodeDecodeError, json.JSONDecodeError):
+                    value = json_loads_strict(raw.decode("utf-8"), label=info.filename)
+                except (UnicodeDecodeError, ContextError):
                     item = parse_text_bytes(raw, receipt_id, info.filename)
                     if item:
                         observations.append(item)
+                    else:
+                        warnings.append(f"skipped unreadable JSON member: {info.filename}")
                     continue
                 observations.extend(parse_json_value(value, receipt_id, info.filename))
             elif suffix == ".jsonl":
@@ -468,8 +524,8 @@ def import_zip(
                     if not line.strip():
                         continue
                     try:
-                        value = json.loads(line)
-                    except json.JSONDecodeError:
+                        value = json_loads_strict(line, label=f"{info.filename}:{line_no}")
+                    except ContextError:
                         warnings.append(f"skipped invalid JSONL line {info.filename}:{line_no}")
                         continue
                     observations.extend(parse_json_value(value, receipt_id, f"{info.filename}:{line_no}"))
@@ -482,17 +538,11 @@ def import_zip(
         return "generic-zip", "generic", observations, warnings
 
 
-def import_file(
-    path: Path,
-    adapter: str,
-    receipt_id: str,
-) -> tuple[str, str, list[dict[str, Any]], list[str]]:
+def import_file(path: Path, adapter: str, receipt_id: str) -> tuple[str, str, list[dict[str, Any]], list[str]]:
     suffix = path.suffix.lower()
     warnings: list[str] = []
-
     if adapter == "repo":
         raise ContextError("repo adapter requires a directory")
-
     if suffix == ".json":
         data = load_json(path)
         chosen = detect_json_adapter(data) if adapter == "auto" else adapter
@@ -503,22 +553,16 @@ def import_file(
             obs, extra = parse_claude(data, receipt_id)
             return "claude-export", provider_status(extra), obs, extra
         return "json", "generic", parse_json_value(data, receipt_id, path.name), warnings
-
     if adapter in {"chatgpt", "claude", "generic-json"}:
         raise ContextError(f"{adapter} adapter requires JSON or an appropriate ZIP export")
-
     if suffix == ".jsonl":
         observations: list[dict[str, Any]] = []
         for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if not line.strip():
                 continue
-            try:
-                value = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ContextError(f"invalid JSONL {path}:{line_no}: {exc}") from exc
+            value = json_loads_strict(line, label=f"{path}:{line_no}")
             observations.extend(parse_json_value(value, receipt_id, f"{path.name}:{line_no}"))
         return "jsonl", "generic", observations, warnings
-
     raw = path.read_bytes()
     item = parse_text_bytes(raw, receipt_id, path.name)
     if item is None:
@@ -526,11 +570,7 @@ def import_file(
     return "document", "generic", [item], warnings
 
 
-def import_repo(
-    path: Path,
-    receipt_id: str,
-    policy: dict[str, Any],
-) -> tuple[str, str, list[dict[str, Any]], list[str]]:
+def import_repo(path: Path, receipt_id: str, policy: dict[str, Any]) -> tuple[str, str, list[dict[str, Any]], list[str]]:
     observations: list[dict[str, Any]] = []
     warnings: list[str] = []
     count = 0
@@ -545,9 +585,7 @@ def import_repo(
         rel_parts = child.relative_to(path).parts
         if ".git" in rel_parts:
             continue
-        if child.suffix.lower() not in TEXT_EXTENSIONS and child.name not in {
-            "LICENSE", "README", "Makefile", "Dockerfile"
-        }:
+        if child.suffix.lower() not in TEXT_EXTENSIONS and child.name not in {"LICENSE", "README", "Makefile", "Dockerfile"}:
             continue
         count += 1
         if count > int(policy["max_repo_files"]):
@@ -608,6 +646,10 @@ def cmd_import(args: argparse.Namespace) -> None:
         source_type, parse_status, observations, warnings = import_file(source, chosen_adapter, receipt_id)
         adapter_id = source_type.split("-")[0] if source_type.endswith("-export") else source_type
 
+    post_parse_hash = source_identity(source, policy)
+    if post_parse_hash != source_hash:
+        raise ContextError("source changed during import; no observations or receipt were written")
+
     receipt = {
         "id": receipt_id,
         "protocol": "AI-CONTEXT/IMPORT",
@@ -623,7 +665,6 @@ def cmd_import(args: argparse.Namespace) -> None:
         "imported_at": utc_now(),
     }
 
-    # imported_at is operational metadata. Idempotent re-imports preserve the first receipt.
     receipts_path = workspace / "receipts" / "imports.jsonl"
     existing = {row.get("id"): row for row in read_jsonl(receipts_path)}
     if receipt_id in existing:
@@ -639,19 +680,18 @@ def cmd_import(args: argparse.Namespace) -> None:
         "observations_appended": appended_obs,
         "receipt_appended": bool(appended_receipt),
         "warnings": warnings,
-    }, indent=2, sort_keys=True))
+    }, indent=2, sort_keys=True, allow_nan=False))
 
 
 def secret_hits(value: Any) -> list[str]:
-    rendered = json.dumps(value, sort_keys=True, ensure_ascii=False)
+    try:
+        rendered = json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ContextError(f"record is not valid JSON: {exc}") from exc
     return sorted(name for name, pattern in SECRET_PATTERNS.items() if pattern.search(rendered))
 
 
-def validate_memory_record(
-    record: dict[str, Any],
-    workspace: Path,
-    policy: dict[str, Any],
-) -> None:
+def validate_memory_record(record: dict[str, Any], workspace: Path, policy: dict[str, Any]) -> None:
     required = {
         "id", "protocol", "schema_version", "record_type", "content", "sensitivity",
         "epistemic_state", "confidence", "approval", "source_refs", "tags", "lifecycle",
@@ -659,6 +699,8 @@ def validate_memory_record(
     missing = sorted(required - set(record))
     if missing:
         raise ContextError(f"memory record missing: {', '.join(missing)}")
+    if not isinstance(record["id"], str) or not record["id"].strip():
+        raise ContextError("memory id must be a non-empty string")
     if record["protocol"] != "AI-CONTEXT/MEMORY" or record["schema_version"] != PROTOCOL_VERSION:
         raise ContextError("unsupported memory protocol/schema version")
     if record["record_type"] not in RECORD_TYPES:
@@ -677,22 +719,16 @@ def validate_memory_record(
         raise ContextError("confidence must be a number from 0 to 1")
     if not isinstance(record["content"], dict):
         raise ContextError("content must be an object")
-    if not isinstance(record["source_refs"], list) or not all(
-        isinstance(ref, str) for ref in record["source_refs"]
-    ):
+    if not isinstance(record["source_refs"], list) or not all(isinstance(ref, str) for ref in record["source_refs"]):
         raise ContextError("source_refs must be a string array")
-    if not isinstance(record["tags"], list) or not all(
-        isinstance(tag, str) and tag for tag in record["tags"]
-    ):
+    if not isinstance(record["tags"], list) or not all(isinstance(tag, str) and tag for tag in record["tags"]):
         raise ContextError("tags must be a string array")
     lifecycle = record["lifecycle"]
-    if not isinstance(lifecycle, dict) or lifecycle.get("state") not in {
-        "active", "expired", "superseded", "tombstoned"
-    }:
+    if not isinstance(lifecycle, dict) or lifecycle.get("state") not in {"active", "expired", "superseded", "tombstoned"}:
         raise ContextError("invalid lifecycle state")
     if policy.get("forbid_secret_memory", True) and record["sensitivity"] == "secret":
         raise ContextError("secret-class records are forbidden from canonical AI memory")
-    hits = secret_hits(record["content"])
+    hits = secret_hits(record)
     if hits:
         raise ContextError(f"candidate contains secret-like material: {', '.join(hits)}")
 
@@ -708,20 +744,23 @@ def validate_memory_record(
         raise ContextError("memory promotion requires provenance unless explicitly user_asserted by policy")
 
 
-def normalize_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+def normalize_candidate(
+    candidate: dict[str, Any],
+    policy: dict[str, Any],
+    existing_by_id: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
     record = dict(candidate)
     record.setdefault("protocol", "AI-CONTEXT/MEMORY")
     record.setdefault("schema_version", PROTOCOL_VERSION)
-    record.setdefault("sensitivity", "private")
+    record.setdefault("sensitivity", policy["default_sensitivity"])
     record.setdefault("epistemic_state", "user_asserted")
     record.setdefault("confidence", 1.0 if record["epistemic_state"] == "user_asserted" else 0.5)
     record.setdefault("approval", "approved")
     record.setdefault("source_refs", [])
     record.setdefault("tags", [])
     record.setdefault("lifecycle", {"state": "active", "expires_at": None, "supersedes": None})
-    record.setdefault("created_at", utc_now())
-    record.setdefault("last_verified", None)
     record.setdefault("notes", "")
+
     if "id" not in record:
         identity_payload = {
             key: value
@@ -729,6 +768,14 @@ def normalize_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
             if key not in {"created_at", "last_verified", "notes"}
         }
         record["id"] = f"memory.sha256:{sha256_bytes(canonical_bytes(identity_payload))}"
+
+    existing = existing_by_id.get(record["id"]) if isinstance(record.get("id"), str) else None
+    if "created_at" not in record:
+        record["created_at"] = existing.get("created_at") if existing else utc_now()
+    if "last_verified" not in record:
+        record["last_verified"] = existing.get("last_verified") if existing else None
+    if existing and "notes" not in candidate:
+        record["notes"] = existing.get("notes", "")
     return record
 
 
@@ -738,27 +785,32 @@ def cmd_promote(args: argparse.Namespace) -> None:
     policy = load_policy(workspace)
     candidate = load_json(Path(args.input).expanduser().resolve())
     candidates = candidate if isinstance(candidate, list) else [candidate]
+    memory_path = workspace / "memory" / "records.jsonl"
+    existing_rows = read_jsonl(memory_path)
+    existing_by_id = {
+        row["id"]: row for row in existing_rows if isinstance(row.get("id"), str)
+    }
+
     records: list[dict[str, Any]] = []
+    pending_by_id = dict(existing_by_id)
     for item in candidates:
         if not isinstance(item, dict):
             raise ContextError("promotion input must be an object or array of objects")
-        record = normalize_candidate(item)
+        record = normalize_candidate(item, policy, pending_by_id)
         validate_memory_record(record, workspace, policy)
         if record["approval"] != "approved":
             raise ContextError(f"refusing to promote non-approved record: {record['id']}")
         records.append(record)
-    count = append_jsonl_unique(workspace / "memory" / "records.jsonl", records)
+        pending_by_id[record["id"]] = record
+
+    count = append_jsonl_unique(memory_path, records)
     print(json.dumps({
         "promoted": count,
         "records": [record["id"] for record in records],
-    }, indent=2, sort_keys=True))
+    }, indent=2, sort_keys=True, allow_nan=False))
 
 
-def record_is_disclosable(
-    record: dict[str, Any],
-    profile: dict[str, Any],
-    extra_tags: set[str],
-) -> bool:
+def record_is_disclosable(record: dict[str, Any], profile: dict[str, Any], extra_tags: set[str]) -> bool:
     if record.get("approval") != "approved":
         return False
     if record.get("lifecycle", {}).get("state") != "active":
@@ -827,7 +879,7 @@ def cmd_bundle(args: argparse.Namespace) -> None:
         "output": str(output),
         "records": len(selected),
         "sha256": payload_hash,
-    }, indent=2, sort_keys=True))
+    }, indent=2, sort_keys=True, allow_nan=False))
 
 
 def validate_receipt(receipt: dict[str, Any]) -> None:
@@ -901,11 +953,11 @@ def cmd_validate(args: argparse.Namespace) -> None:
 
     record_ids: set[str] = set()
     for record in records:
-        rid = record.get("id")
+        validate_memory_record(record, workspace, policy)
+        rid = record["id"]
         if rid in record_ids:
             raise ContextError(f"duplicate memory id: {rid}")
         record_ids.add(rid)
-        validate_memory_record(record, workspace, policy)
 
     print(json.dumps({
         "status": "ok",
@@ -915,7 +967,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
         "canonical_store_sha256": sha256_bytes(
             canonical_bytes(sorted(records, key=lambda record: record["id"]))
         ),
-    }, indent=2, sort_keys=True))
+    }, indent=2, sort_keys=True, allow_nan=False))
 
 
 def build_parser() -> argparse.ArgumentParser:
