@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/policy.schema.json",
+  "title": "AI-CONTEXT Workspace Policy",
+  "type": "object",
+  "required": ["protocol", "schema_version", "default_sensitivity", "forbid_secret_memory", "allow_source_free_user_assertions"],
+  "properties": {
+    "protocol": {"const": "AI-CONTEXT/POLICY"},
+    "schema_version": {"const": "0.1.0"},
+    "default_sensitivity": {"enum": ["public", "private", "restricted"]},
+    "forbid_secret_memory": {"const": true},
+    "allow_source_free_user_assertions": {"type": "boolean"},
+    "max_archive_members": {"type": "integer", "minimum": 1},
+    "max_archive_member_bytes": {"type": "integer", "minimum": 1},
+    "max_archive_total_bytes": {"type": "integer", "minimum": 1},
+    "max_repo_files": {"type": "integer", "minimum": 1},
+    "max_repo_file_bytes": {"type": "integer", "minimum": 1},
+    "max_repo_total_bytes": {"type": "integer", "minimum": 1}
+  },
+  "additionalProperties": false
+}
