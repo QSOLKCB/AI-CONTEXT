@@ -63,15 +63,17 @@ Provider export formats are inputs, not stable APIs. Each adapter must carry an 
 
 ## Phase 4 — Repository and document context
 
-- [ ] Git tree snapshot receipt format including commit identity when available.
-- [ ] Repository authority/precedence metadata.
-- [ ] Commit/tag/release identity records.
-- [ ] Markdown/document chunk observations with source line/range metadata.
+- [x] Git tree snapshot receipt format including commit identity when available.
+- [x] Repository authority/precedence metadata.
+- [x] Commit/tag/release identity records.
+- [x] Markdown/document chunk observations with source line/range metadata.
 - [x] PDF ingestion boundary documented as external extraction rather than hidden parser assumptions.
 - [x] Local source-tree adapter with extension policy.
-- [ ] Optional Google Drive/export adapters.
-- [ ] Optional email archive adapter.
-- [ ] Duplicate-content collapse without destroying provenance.
+- [x] Optional Google Drive/export adapters.
+- [x] Optional email archive adapter.
+- [x] Duplicate-content collapse without destroying provenance.
+
+**Phase 4 complete.** `tools/evidence_import.py` creates deterministic source snapshots, source-evidence authority metadata, exact Git commit/tree/tag identities, conservative unverified release identities, line-addressed document chunks, Drive/Takeout evidence, RFC 5322/MIME email evidence, and content-addressed duplicate collapse. Unique payloads live once in `staging/content.jsonl`; independent source observations continue to preserve path/range/message provenance and are joined through the deterministic `staging/content-index.json`. `tools/validate_evidence.py` verifies snapshot/content identities, receipt cardinality, content references, and duplicate-provenance groups. Source authority ranks are precedence hints inside the source-evidence domain and never imply that a source claim is true.
 
 ## Phase 5 — Curation engine
 
