@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/search-cache.schema.json",
+  "title": "AI-CONTEXT Search Cache Projection",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "index_kind", "authority", "source_fingerprint", "tokenization", "postings", "records"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^search-cache\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/SEARCH-CACHE"},
+    "schema_version": {"const": "0.1.0"},
+    "index_kind": {"const": "search"},
+    "authority": {"const": "derived-retrieval-only"},
+    "source_fingerprint": {"$ref": "derived-source-fingerprint.schema.json"},
+    "tokenization": {"const": "unicode-casefold-v1"},
+    "postings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["token", "memory_ids"],
+        "properties": {
+          "token": {"type": "string", "minLength": 1},
+          "memory_ids": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["memory_id", "token_count", "unique_token_count"],
+        "properties": {
+          "memory_id": {"type": "string", "minLength": 1},
+          "token_count": {"type": "integer", "minimum": 0},
+          "unique_token_count": {"type": "integer", "minimum": 0}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

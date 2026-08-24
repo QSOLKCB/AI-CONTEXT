@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/graph-index.schema.json",
+  "title": "AI-CONTEXT Graph Index Projection",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "index_kind", "authority", "source_fingerprint", "nodes", "edges", "unresolved_relationships"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^graph-index\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/GRAPH-INDEX"},
+    "schema_version": {"const": "0.1.0"},
+    "index_kind": {"const": "graph"},
+    "authority": {"const": "derived-retrieval-only"},
+    "source_fingerprint": {"$ref": "derived-source-fingerprint.schema.json"},
+    "nodes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["id", "kind", "memory_id", "record_type", "sensitivity"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^memory:.+"},
+              "kind": {"const": "memory"},
+              "memory_id": {"type": "string", "minLength": 1},
+              "record_type": {"type": "string", "minLength": 1},
+              "sensitivity": {"enum": ["public", "private", "restricted", "secret"]}
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": ["id", "kind", "ref"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^observation:.+"},
+              "kind": {"const": "observation_ref"},
+              "ref": {"type": "string", "minLength": 1}
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": ["id", "kind", "ref"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^semantic:.+"},
+              "kind": {"const": "semantic_key"},
+              "ref": {"type": "string", "minLength": 1}
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "relation", "relationship_memory_id"],
+        "properties": {
+          "from": {"type": "string", "minLength": 1},
+          "to": {"type": "string", "minLength": 1},
+          "relation": {"type": "string", "minLength": 1},
+          "relationship_memory_id": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "unresolved_relationships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["memory_id", "reason"],
+        "properties": {
+          "memory_id": {"type": "string", "minLength": 1},
+          "reason": {
+            "enum": [
+              "relationship-content-not-object",
+              "relationship-name-missing",
+              "relationship-endpoint-ambiguous-or-missing",
+              "relationship-memory-endpoint-not-active"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -37,7 +37,12 @@ These rules are normative for AI-assisted changes to this repository.
 - Raw vault/provider exports and generated historical bundles are not silently promoted into restore continuity requirements.
 - Unknown restore/workspace major versions must fail closed. Never guess through a major-version authority or canonicalization change.
 - Additive restore/migration metadata is permitted only inside the explicit non-authoritative `extensions` container.
-- Derived vector/graph/search indexes are projections, never authority.
+- Phase 9 vector/graph/search indexes are derived retrieval projections only. `INDEX HIT != MEMORY AUTHORITY` and `INDEX MEMBERSHIP != DISCLOSURE PERMISSION`.
+- Every usable derived index must bind the current canonical-memory source fingerprint. `STALE INDEX != USABLE INDEX`.
+- Default retrieval projections contain approved active canonical records only. Tombstoned, expired, superseded, rejected, and pending records must not remain retrieval-eligible after rebuild.
+- Derived graph projections may preserve explicit reference structure but must not guess semantic-key resolution or invent authority edges.
+- Search/vector results are candidate retrieval only and must return to canonical validation and Phase 6 routing before disclosure.
+- Derived indexes are rebuildable caches, not Phase 8 restore authority. Restore should rebuild them from restored canonical state rather than trusting old cache bytes.
 - Do not claim cross-runtime canonical byte equivalence unless a future canonicalizer contract proves it.
 - Restore means reconstruction of curated context, not recreation of a model identity or hidden provider state.
 
@@ -50,7 +55,7 @@ These rules are normative for AI-assisted changes to this repository.
 - Storage logical paths must reject traversal and absolute-path escape.
 - Restore export must reject symlinked source artifacts; restore destinations must be assembled off-path and published only after complete validation.
 - New import adapters require synthetic fixtures and format-drift failure tests.
-- Changes to canonicalization, ids, schemas, sensitivity semantics, promotion rules, curation authority, mutation semantics, routing policy, dependency expansion, disclosure diagnostics, storage envelopes, key metadata, deletion/erasure semantics, restore manifests, continuity classes, migration rules, or enrichment authority require protocol/migration review.
+- Changes to canonicalization, ids, schemas, sensitivity semantics, promotion rules, curation authority, mutation semantics, routing policy, dependency expansion, disclosure diagnostics, storage envelopes, key metadata, deletion/erasure semantics, restore manifests, continuity classes, migration rules, enrichment authority, index source fingerprints, index membership policy, or index generator identity require protocol/migration review.
 - Curation write paths must be explicit and fail closed when approval, provenance, conflict resolution, or actor authority is ambiguous.
 - Routing must fail closed when a required dependency cannot be disclosed to the selected target.
 - Routing policy/profile normalization must reject unknown fields rather than ignoring policy typos.
@@ -58,6 +63,8 @@ These rules are normative for AI-assisted changes to this repository.
 - Encrypted-store normal access must fail while a rotation journal is present.
 - Restore must validate declared artifact hashes and byte lengths before the destination workspace becomes visible.
 - Migration manifests must record explicit source/target versions and may not hide payload transformations.
+- Derived-index validation must recompute the current canonical source fingerprint and reject stale projections before query use.
+- Derived index builders must be deterministic for the declared generator/canonicalizer and must not mutate canonical memory, curation, routing policy, or evidence authority.
 - Security-sensitive behavior must fail closed.
 
 ## Test expectations
@@ -103,4 +110,10 @@ At minimum preserve tests for:
 - unknown restore/workspace major-version rejection;
 - additive `extensions` metadata does not change restore snapshot authority;
 - cross-provider restored routing preserves the same canonical record set;
+- deterministic vector, graph, and search projections for unchanged canonical state;
+- stale derived-index rejection after any canonical mutation;
+- index retrieval cannot bypass provider/local routing policy;
+- tombstoned records disappear from rebuilt retrieval projections while canonical history remains;
+- derived-index source fingerprints change when canonical state changes;
+- Phase 9 schemas conform to generated reference projections;
 - deletion/tombstone propagation once lifecycle mutation lands.

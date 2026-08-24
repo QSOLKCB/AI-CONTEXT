@@ -146,16 +146,18 @@ Restore reconstructs governed context; it never recreates a model identity, prov
 
 ## Phase 9 — Derived indexes
 
-- [ ] Vector index projection format.
-- [ ] Graph index projection format.
-- [ ] Search cache projection format.
-- [ ] Derived-artifact source fingerprints.
-- [ ] Stale projection rejection.
-- [ ] Rebuild-after-tombstone conformance.
+- [x] Vector index projection format.
+- [x] Graph index projection format.
+- [x] Search cache projection format.
+- [x] Derived-artifact source fingerprints.
+- [x] Stale projection rejection.
+- [x] Rebuild-after-tombstone conformance.
+
+**Phase 9 complete.** `tools/indexes.py` builds deterministic private `indexes/` projections from approved active canonical memory. `vector.json` uses a dependency-free Unicode tokenization plus SHA-256 bucketed sparse integer vector reference format; `graph.json` projects active memory, provenance references, explicit relationships, and unresolved relationship diagnostics without guessing semantic-key authority; `search.json` is an inverted lexical candidate cache; and `manifest.json` binds all three artifacts to exact bytes and one `AI-CONTEXT/DERIVED-SOURCE-FINGERPRINT`. The fingerprint includes the complete canonical-store SHA-256 plus the active-approved retrieval-input SHA-256, so any canonical mutation makes prior indexes stale. Validation recomputes the current fingerprint and every deterministic projection before use. Search refuses stale indexes and returns candidate IDs only with `disclosure_requires_routing = true`. Tombstoning immediately stales the prior set; rebuild removes the tombstoned record from vector/search/active graph retrieval while preserving authoritative canonical and tombstone history. Derived indexes remain outside Phase 8 continuity archives and are rebuilt after restore.
 
 ### Authority gate
 
-Indexes are retrieval accelerators. They never outrank canonical memory or source provenance.
+Indexes are retrieval accelerators only. `INDEX HIT != MEMORY AUTHORITY`, `INDEX MEMBERSHIP != DISCLOSURE PERMISSION`, and `STALE INDEX != USABLE INDEX`. A vector, graph edge, or search hit may identify a candidate but can never promote, verify, reclassify, resurrect, mutate, or disclose canonical memory. Phase 6 routing remains the disclosure authority.
 
 ## Phase 10 — Interoperability
 
@@ -179,7 +181,7 @@ Indexes are retrieval accelerators. They never outrank canonical memory or sourc
 
 The implementation architecture is frozen **before** formalization. Lean 4 must describe the released protocol rather than become another place to change it.
 
-- [ ] Complete Phases 9–11.
+- [ ] Complete Phases 10–11.
 - [ ] Run the complete conformance/security/adversarial suite on the intended release commit.
 - [ ] Freeze public protocol names, schemas, canonical invariants, and migration rules for v1.0.
 - [ ] Perform a final public-tree audit for private data, credentials, keys, generated workspaces, caches, and accidental artifacts.
@@ -215,8 +217,9 @@ AI-CONTEXT v1.0 must not be declared until every item is checked:
 - [ ] Formalize restore continuity without model-identity claims.
 - [ ] Formalize style/culture enrichment as having zero factual authority.
 - [ ] Formalize storage/encryption as persistence properties that confer no epistemic authority; do not attempt to re-prove AES-GCM itself.
+- [ ] Formalize derived indexes as non-authoritative projections and stale-source fingerprints as unusable retrieval state.
 - [ ] Formalize migration unknown-major rejection and extensions-only non-authoritative metadata.
-- [ ] Add finite reference models and counterexamples for invalid promotion, disclosure, migration, and restore states.
+- [ ] Add finite reference models and counterexamples for invalid promotion, disclosure, migration, restore, and derived-index authority states.
 - [ ] Map each formal theorem to the corresponding protocol invariant, reference implementation behavior, and adversarial test.
 - [ ] Add Lean CI and require the archival theorem set to build without unresolved proof placeholders.
 - [ ] Produce a machine-readable theorem inventory for the archival record.
@@ -234,7 +237,7 @@ cryptographic library use != reimplementation of cryptographic proofs
 
 The archival surface should remain intentionally small and easy to cite: **three public uploads**.
 
-- [ ] Produce `AI-CONTEXT-v1.0.0-Overview.pdf`, a front-facing human technical report covering motivation, architecture, threat model, evidence, curation, routing, storage, restore/migration, conformance, Lean results, limitations, reproducibility, and citation.
+- [ ] Produce `AI-CONTEXT-v1.0.0-Overview.pdf`, a front-facing human technical report covering motivation, architecture, threat model, evidence, curation, routing, storage, restore/migration, derived indexes, conformance, Lean results, limitations, reproducibility, and citation.
 - [ ] Produce `RELEASE-NOTES.md` as the machine-readable/human-readable release report containing tag, commit SHA, protocol/schema versions, phase status, theorem inventory summary, tests, limitations, artifact hashes, and reproduction commands.
 - [ ] Produce `AI-CONTEXT-1.0.0-source.zip` as an archival source bundle containing:
   - `reference-v1.0.0/` — exact source tree of the immutable GitHub `v1.0.0` tag;
