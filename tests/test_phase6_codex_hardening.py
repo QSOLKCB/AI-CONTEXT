@@ -266,6 +266,103 @@ class Phase6CodexHardeningTests(unittest.TestCase):
         self.assertEqual(set(selected), {"root", "a", "b", "c", "d"})
         self.assertEqual(diagnostics["c"]["dependency_of"], ["a", "b"])
 
+    def test_max_depth_is_enforced_on_every_path_regardless_of_root_order(self):
+        records = {
+            name: {
+                "id": name,
+                "record_type": "claim",
+                "approval": "approved",
+                "lifecycle": {"state": "active"},
+                "sensitivity": "public",
+                "tags": [],
+                "source_refs": [],
+                "epistemic_state": "user_asserted",
+                "confidence": 1.0,
+                "content": {"subject": name},
+            }
+            for name in ("a", "c", "z")
+        }
+        for rel in ("za", "ac"):
+            records[rel] = {
+                "id": rel,
+                "record_type": "relationship",
+                "approval": "approved",
+                "lifecycle": {"state": "active"},
+                "sensitivity": "public",
+                "tags": [],
+                "source_refs": [],
+                "epistemic_state": "user_asserted",
+                "confidence": 1.0,
+                "content": {"relation": "requires"},
+            }
+        graph = {
+            "z": [{"target_id": "a", "relationship_id": "za", "relation": "requires"}],
+            "a": [{"target_id": "c", "relationship_id": "ac", "relation": "requires"}],
+        }
+        selected = {name: records[name] for name in ("a", "c", "z")}
+        diagnostics = {
+            name: {
+                "memory_id": name,
+                "included_by": ["profile_baseline"],
+                "tag_matches": [],
+                "task_matches": [],
+                "dependency_of": [],
+                "dependency_depth": None,
+            }
+            for name in selected
+        }
+        profile = {
+            "dependency_policy": {
+                "enabled": True,
+                "max_depth": 1,
+                "fail_on_cycle": True,
+                "include_relationship_records": False,
+            }
+        }
+        with self.assertRaisesRegex(routing.RoutingError, "max_depth=1"):
+            routing._expand_dependencies(
+                self.workspace,
+                selected,
+                diagnostics,
+                records=records,
+                graph=graph,
+                profile=profile,
+                target={},
+                routing_policy={},
+                application_ids=set(),
+            )
+
+    def test_multiple_explicit_semantic_aliases_can_name_one_memory(self):
+        content = {"subject": "AliasTarget"}
+        first_id = self.create_memory(
+            "alias-one",
+            content=content,
+            semantic_key="claim:alias:one",
+        )
+        second_id = self.create_memory(
+            "alias-two",
+            content=content,
+            semantic_key="claim:alias:two",
+        )
+        self.assertEqual(first_id, second_id)
+        records = {row["id"]: row for row in self.read_jsonl("memory/records.jsonl")}
+        key_map = routing._semantic_key_map(self.workspace, records)
+        self.assertEqual(key_map["claim:alias:one"], {first_id})
+        self.assertEqual(key_map["claim:alias:two"], {first_id})
+        self.assertNotIn("claim:subject:AliasTarget", key_map)
+
+    def test_missing_curation_policy_fails_without_recreating_authority_state(self):
+        self.create_memory(
+            "provider-policy",
+            sensitivity="public",
+            semantic_key="claim:provider-policy",
+        )
+        policy_path = self.workspace / "curation" / "policy.json"
+        policy_path.unlink()
+        _, failed = self.bundle(target="provider-default", expect=2)
+        self.assertIn("curation policy is missing", failed.stderr)
+        self.assertFalse(policy_path.exists())
+
     def test_content_path_schema_and_runtime_both_reject_single_wildcard(self):
         schema = json.loads(
             (ROOT / "spec" / "disclosure-exclusions.schema.json").read_text(encoding="utf-8")
