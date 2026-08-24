@@ -193,13 +193,15 @@ Indexes are retrieval accelerators only. `INDEX HIT != MEMORY AUTHORITY`, `INDEX
 
 **Architecture Phases 0–11 are complete.** The project is now in v1.0 release-candidate hardening. The implementation architecture is frozen before formalization; Lean 4 must describe the released protocol rather than become another place to change it.
 
-- [ ] Run the complete conformance/security/adversarial suite on the intended release commit.
-- [ ] Freeze public protocol names, schemas, canonical invariants, and migration rules for v1.0.
-- [ ] Freeze the v1 canonicalizer choice: retain `python-json-v0.1` with the Phase 10 conformance corpus or introduce an explicitly versioned JCS migration.
-- [ ] Perform a final public-tree audit for private data, credentials, keys, generated workspaces, caches, and accidental artifacts.
-- [ ] Produce final `RELEASE-NOTES.md` for the GitHub release candidate.
-- [ ] Tag the exact frozen commit as `v1.0.0`.
+- [ ] Run the complete conformance/security/adversarial suite on the intended release commit. *(The pre-merge release candidate passes this gate; rerun it on the exact merged `main` commit before tagging.)*
+- [x] Freeze public protocol names, schemas, canonical invariants, and migration rules for v1.0 via `release/v1-freeze.json` and the immutable tagged-tree rule.
+- [x] Freeze the v1 canonicalizer choice: retain `python-json-v0.1` with the Phase 10 language-neutral conformance corpus. RFC 8785 JCS remains evaluated but not adopted for v1.0.0.
+- [x] Perform a final public-tree audit for private data, credentials, keys, generated workspaces, caches, and accidental artifacts using `AI-CONTEXT/RELEASE-AUDIT` over the exact Git-tracked tree.
+- [x] Produce final `RELEASE-NOTES.md` for the GitHub release candidate.
+- [ ] Tag the exact frozen commit as `v1.0.0` after the merged `main` commit passes the same CI/audit gate.
 - [ ] Record the v1.0.0 tag commit SHA as the immutable formalization target.
+
+**Pre-tag release-candidate gate complete.** The full Python conformance/security/adversarial suite, Python interoperability vectors, Rust verifier tests, Rust capability/conformance checks, and the tracked-tree release audit pass together on the release-candidate branch. `tools/release_audit.py` derives its scope from `git ls-files`, rejects private/runtime path classes, key/credential/restore artifacts, tracked symlinks, generated build/cache/archive debris, and common secret-shaped text, and emits a schema-valid `AI-CONTEXT/RELEASE-AUDIT` receipt. Its successful claim is deliberately bounded to `no-forbidden-private-or-runtime-artifacts-detected-in-tracked-tree`; untracked local files, prior Git history, external copies, and semantic privacy beyond pattern-based detection remain outside that claim. After merge, the only pre-Lean release actions are to rerun the gate on the exact `main` commit, create `v1.0.0` on that commit, and record its SHA.
 
 ### v1.0 release gate status
 
@@ -213,7 +215,7 @@ AI-CONTEXT v1.0 must not be declared until every item is checked:
 - [x] Deletion/tombstone propagation is tested.
 - [x] At least two independent AI-export formats and one repository/document source round-trip through staging.
 - [x] A cold-start restore succeeds without provider-side memory.
-- [ ] Final release-candidate audit demonstrates that private raw input, credentials, storage keys, recovery material, and user workspace artifacts are absent from the public release tree.
+- [x] Final release-candidate audit demonstrates that private raw input, credentials, storage keys, recovery material, and user workspace artifacts are absent from the public release tree under the declared `tracked-public-git-tree` audit scope.
 - [x] Documentation clearly distinguishes context continuity from AI/model identity.
 
 ## Phase 12 — Lean 4 formalization of frozen v1.0.0
