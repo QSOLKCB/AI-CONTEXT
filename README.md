@@ -37,6 +37,11 @@ storage boundary (optional)
   plaintext filesystem backend
         or
   encrypted directory backend + external key custody
+
+portable continuity (optional)
+  minimum .aicr restore set
+        or
+  full working-set .aicr restore archive
 ```
 
 Core boundaries:
@@ -50,23 +55,25 @@ DEPENDENCY != PERMISSION BYPASS
 ROUTED BUNDLE != CANONICAL MEMORY
 ENCRYPTION AT REST != MEMORY AUTHORITY
 KEY ID != KEY MATERIAL
+RESTORE != MODEL IDENTITY
+STYLE/CULTURE != FACTUAL AUTHORITY
 RESTORED CONTEXT != ORIGINAL MODEL INSTANCE
 ```
 
-A prior AI response may contain hallucinations. A repository may be stale. An email can repeat a false claim. A task may be relevant to material that the selected provider is not allowed to receive. Encryption can protect persisted bytes while doing nothing to make those bytes true or authorized. AI-CONTEXT therefore keeps evidence, authority, curation, disclosure, and storage as distinct layers.
+A prior AI response may contain hallucinations. A repository may be stale. An email can repeat a false claim. A task may be relevant to material that the selected provider is not allowed to receive. Encryption can protect persisted bytes while doing nothing to make those bytes true or authorized. Restore can reconstruct governed context while doing nothing to recreate a model instance. AI-CONTEXT therefore keeps evidence, authority, curation, disclosure, storage, and continuity as distinct layers.
 
 ## Design goals
 
-- **Private by default.** Raw exports, evidence state, curation state, routing policy, and generated bundles live in the private workspace and are ignored by Git by default.
+- **Private by default.** Raw exports, evidence state, curation state, routing policy, restore archives, and generated bundles are private workspace material.
 - **User-owned.** The source of truth is the user's store, not provider-side memory.
-- **Portable.** Core artifacts use UTF-8 JSON/JSONL plus deterministic hashes and receipts.
-- **Vendor-neutral.** Provider export formats, model runtimes, and storage backends are replaceable edges, not authorities.
+- **Portable.** Core artifacts use UTF-8 JSON/JSONL plus deterministic hashes, receipts, and portable restore manifests.
+- **Vendor-neutral.** Provider export formats, model runtimes, storage backends, and restore targets are replaceable edges, not authorities.
 - **Provenance-preserving.** Canonical memory can trace back to observations, import receipts, source snapshots, and content identities.
 - **Typed memory.** Facts, preferences, project state, claims, hypotheses, instructions, relationships, publications, events, environment state, and provenance policy remain distinct classes.
 - **Human/policy curation authority.** Automated extractors and local LLMs may propose. They may not self-promote.
 - **Selective disclosure.** Build the smallest permitted task bundle rather than giving every model the complete private store.
-- **Fail closed.** Unknown formats, ambiguous dependencies, blocked required context, malformed authority state, interrupted key rotation, and policy conflicts are rejected rather than guessed through.
-- **Deterministic where practical.** Identical memory, profile, routing policy, target, task, and selectors produce identical routed bundle bytes under the declared canonicalizer.
+- **Fail closed.** Unknown formats, ambiguous dependencies, blocked required context, malformed authority state, interrupted key rotation, corrupt restore archives, and unknown major versions are rejected rather than guessed through.
+- **Deterministic where practical.** Identical memory, profile, routing policy, target, task, and selectors produce identical routed bundle bytes under the declared canonicalizer; restore snapshot identity binds the declared payload set.
 - **Restorable, not mystical.** Restore reconstructs curated context. It does not recreate hidden provider state, a model identity, or private chain of thought.
 
 ## Trust zones
@@ -115,6 +122,12 @@ Phase 7 provides:
 - explicit external key-destruction attestations.
 
 See [`docs/STORAGE.md`](docs/STORAGE.md) and [`docs/ENCRYPTION-THREAT-MODELS.md`](docs/ENCRYPTION-THREAT-MODELS.md).
+
+### 7. Portable restore boundary
+
+A `.aicr` archive carries a declared continuity set, restore manifest, migration manifest, and payload hashes. It reconstructs portable AI-CONTEXT state on a cold-start machine without provider-side memory.
+
+See [`docs/RESTORE.md`](docs/RESTORE.md) and [`docs/CROSS-PROVIDER-RESTORE.md`](docs/CROSS-PROVIDER-RESTORE.md).
 
 ## Source adapters
 
@@ -266,7 +279,68 @@ The receipt deliberately claims only that the primary ciphertext object was remo
 
 Recovery keys/passphrases/private keys must never be stored in AI-CONTEXT canonical memory, staging, curation state, bundles, storage manifests, or receipts.
 
-Phase 7 defines the storage contract and reference backend. It does **not** yet transparently replace every Phase 1–6 filesystem operation with encrypted virtual I/O. That larger integration can happen without changing canonical semantics.
+## Phase 8 restore and migration
+
+Create the smallest continuity archive needed to recover governed canonical context and local routing:
+
+```bash
+python3 tools/restore.py export \
+  ~/my-ai-context \
+  ~/backups/context-minimum.aicr \
+  --mode minimum
+```
+
+Create a full working-set archive including receipts, staging evidence, source snapshots/content indexes, and curation history:
+
+```bash
+python3 tools/restore.py export \
+  ~/my-ai-context \
+  ~/backups/context-full.aicr \
+  --mode full
+```
+
+Optionally include presentation-only style/culture enrichment:
+
+```bash
+python3 tools/restore.py export \
+  ~/my-ai-context \
+  ~/backups/context.aicr \
+  --mode minimum \
+  --enrichment ~/private/style-culture.json
+```
+
+The enrichment schema requires:
+
+```text
+factual_authority = none
+apply_scope = presentation_only
+```
+
+Validate or inspect an archive without restoring:
+
+```bash
+python3 tools/restore.py validate ~/backups/context.aicr
+python3 tools/restore.py inspect ~/backups/context.aicr
+```
+
+Cold-start restore into a path that does not already exist:
+
+```bash
+python3 tools/restore.py restore \
+  ~/backups/context.aicr \
+  ~/restored-ai-context
+```
+
+Restore is assembled in a temporary sibling directory and becomes visible only after artifact hashes, workspace policy, canonical memory, profiles/routing, and applicable evidence/curation state validate.
+
+Portable restore archives declare:
+
+```text
+provider_memory_dependency = none
+restore_claim = context-continuity-not-model-identity
+```
+
+Raw vault exports and historical bundles are not continuity requirements. Unknown major versions fail closed. Additive metadata is allowed only under a non-authoritative `extensions` object.
 
 ## Validation
 
@@ -277,6 +351,7 @@ python3 tools/validate_curation.py ~/my-ai-context
 python3 tools/validate_routing.py ~/my-ai-context
 python3 tools/validate_routing.py ~/my-ai-context --bundle /tmp/local-context.json
 python3 tools/storage.py validate ~/private/ai-context.secure --key-file ~/keys/ai-context-next.key
+python3 tools/restore.py validate ~/backups/context.aicr
 ```
 
 ## Memory record model
@@ -293,6 +368,8 @@ PRIVATE != SAFE TO DISCLOSE
 SOURCE IMPORTED != MEMORY APPROVED
 RELEVANT != PERMITTED
 ENCRYPTED != AUTHORIZED
+STYLE/CULTURE != FACTUAL AUTHORITY
+RESTORED CONTEXT != ORIGINAL MODEL INSTANCE
 DELETED != MERELY HIDDEN
 ```
 
@@ -300,15 +377,15 @@ DELETED != MERELY HIDDEN
 
 ```text
 spec/                    protocol and JSON schemas
-docs/                    architecture, threat model, curation/routing/storage, provider notes
-tools/                   dependency-light reference CLIs + optional storage backend
+docs/                    architecture, threat model, curation/routing/storage/restore, provider notes
+tools/                   dependency-light reference CLIs + optional storage/restore tooling
 fixtures/conformance/    standalone valid/invalid protocol fixtures
 fixtures/provider-drift/ synthetic provider migration fixtures
-tests/                   conformance, security, evidence, curation, routing, storage tests
+tests/                   conformance, security, evidence, curation, routing, storage, restore tests
 requirements-storage.txt optional maintained cryptography dependency
 ```
 
-A real user workspace and encrypted store should live outside this public framework repository or in a separately controlled private location. Key files must live outside the encrypted store.
+A real user workspace, encrypted store, and restore archive should live outside this public framework repository or in a separately controlled private location. Key files must live outside encrypted stores and restore archives.
 
 ## Security posture
 
@@ -316,17 +393,21 @@ AI-CONTEXT is **not** a password manager. Do not intentionally preserve credenti
 
 Phase 7 protects stored payload contents against an attacker who gets the encrypted store without the external key. It does not protect plaintext after authorized decryption, a compromised live process, insecure exported plaintext, or every backup/snapshot by itself.
 
+Phase 8 reconstructs portable context from declared artifacts. It does not reconstruct provider-private memory, model weights, hidden chain of thought, or an original model identity.
+
 See:
 
 - [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md)
 - [`docs/STORAGE.md`](docs/STORAGE.md)
 - [`docs/ENCRYPTION-THREAT-MODELS.md`](docs/ENCRYPTION-THREAT-MODELS.md)
+- [`docs/RESTORE.md`](docs/RESTORE.md)
+- [`docs/CROSS-PROVIDER-RESTORE.md`](docs/CROSS-PROVIDER-RESTORE.md)
 
 ## Relationship to QSOL-CONTEXT
 
 `QSOLKCB/QSOL-CONTEXT` is an opinionated private implementation containing a specific user's identity, projects, research, chronology, restore machinery, provenance decisions, and routing policy.
 
-AI-CONTEXT extracts transferable structures such as selective loading, deterministic bundles, typed epistemic records, provenance/honesty boundaries, restore/context continuity without model-identity claims, source precedence, explicit exclusions, routing, receipts, fingerprints, and now a vendor-neutral storage boundary.
+AI-CONTEXT extracts transferable structures such as selective loading, deterministic bundles, typed epistemic records, provenance/honesty boundaries, source precedence, explicit exclusions, routing, receipts, fingerprints, encrypted persistence, and provider-neutral restore/context continuity without model-identity claims.
 
 It intentionally does **not** inherit QSOL-specific identity, ontology, project names, cultural artifacts, or private data.
 
@@ -342,6 +423,7 @@ AI-CONTEXT
   canonical memory
   selective disclosure / routing
   optional encrypted persistence
+  portable restore / migration
         |
         | explicit routed bundle only
         v
@@ -357,11 +439,11 @@ Authority rule:
 
 > **AI-CONTEXT CANONICAL MEMORY > ROUTED BUNDLE > DOWNSTREAM SUBSTRATE PROJECTION**
 
-Encryption does not alter that order.
+Encryption and restore do not alter that order.
 
 ## Status
 
-Early reference implementation. **Phases 0–7 are complete.** The protocol remains experimental until restore/migration, derived-index, and broader interoperability gates reach the v1.0 release criteria in [`ROADMAP.md`](ROADMAP.md).
+Early reference implementation. **Phases 0–8 are complete.** The protocol remains experimental until derived-index and broader interoperability gates reach the v1.0 release criteria in [`ROADMAP.md`](ROADMAP.md).
 
 ## License
 
