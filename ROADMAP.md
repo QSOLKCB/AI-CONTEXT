@@ -161,13 +161,19 @@ Indexes are retrieval accelerators only. `INDEX HIT != MEMORY AUTHORITY`, `INDEX
 
 ## Phase 10 — Interoperability
 
-- [ ] Python reference implementation stabilisation.
-- [ ] Rust implementation if useful for hardened local stores.
-- [ ] Language-neutral conformance fixtures.
-- [ ] JSON canonicalization upgrade evaluation, including RFC 8785 JCS.
-- [ ] Signed bundle receipts.
-- [ ] Capability manifest for model/agent consumers.
-- [ ] MCP/tool adapter examples.
+- [x] Python reference implementation stabilisation.
+- [x] Rust implementation if useful for hardened local stores.
+- [x] Language-neutral conformance fixtures.
+- [x] JSON canonicalization upgrade evaluation, including RFC 8785 JCS.
+- [x] Signed bundle receipts.
+- [x] Capability manifest for model/agent consumers.
+- [x] MCP/tool adapter examples.
+
+**Phase 10 complete.** `tools/interop.py` defines the stabilized Python interoperability façade for capability discovery, language-neutral fixture validation, external Ed25519 signing-key generation, bundle signing, and signed-receipt verification. `fixtures/interoperability/` freezes exact `python-json-v0.1` byte/hash vectors plus a public-only Ed25519 signature vector, and `rust/ai-context-interop/` independently verifies the same capability/signature corpus and exact bundle-byte receipts without gaining memory or routing write authority. Signed receipts bind exact bundle bytes, canonical payload/store hashes, signer key identity, and a domain-separated byte preimage while explicitly remaining `integrity-attestation-only`. `AI-CONTEXT/CAPABILITY-MANIFEST` advertises supported features and authority limits to model/agent/tool consumers. RFC 8785 JCS is evaluated in `docs/JCS-EVALUATION.md` but is not silently adopted because canonicalizer changes alter existing identities and require an explicit migration/freeze decision. Read-only MCP/generic tool examples expose discovery, candidate retrieval, bundle validation, and receipt verification without creating a new authority layer.
+
+### Interoperability security gate
+
+`SIGNATURE != DISCLOSURE AUTHORITY`, `SIGNATURE != EPISTEMIC AUTHORITY`, `CAPABILITY CLAIM != PERMISSION`, and `MCP TOOL != MEMORY AUTHORITY`. Private signing keys remain external and never enter fixtures, canonical memory, restore archives, or capability manifests. Independent implementations may verify wire contracts but do not become competing canonical-memory authorities.
 
 ## Phase 11 — UX
 
@@ -181,9 +187,10 @@ Indexes are retrieval accelerators only. `INDEX HIT != MEMORY AUTHORITY`, `INDEX
 
 The implementation architecture is frozen **before** formalization. Lean 4 must describe the released protocol rather than become another place to change it.
 
-- [ ] Complete Phases 10–11.
+- [ ] Complete Phase 11.
 - [ ] Run the complete conformance/security/adversarial suite on the intended release commit.
 - [ ] Freeze public protocol names, schemas, canonical invariants, and migration rules for v1.0.
+- [ ] Freeze the v1 canonicalizer choice: retain `python-json-v0.1` with the Phase 10 conformance corpus or introduce an explicitly versioned JCS migration.
 - [ ] Perform a final public-tree audit for private data, credentials, keys, generated workspaces, caches, and accidental artifacts.
 - [ ] Produce final `RELEASE-NOTES.md` for the GitHub release candidate.
 - [ ] Tag the exact frozen commit as `v1.0.0`.
@@ -218,8 +225,10 @@ AI-CONTEXT v1.0 must not be declared until every item is checked:
 - [ ] Formalize style/culture enrichment as having zero factual authority.
 - [ ] Formalize storage/encryption as persistence properties that confer no epistemic authority; do not attempt to re-prove AES-GCM itself.
 - [ ] Formalize derived indexes as non-authoritative projections and stale-source fingerprints as unusable retrieval state.
+- [ ] Formalize signed receipts as byte-integrity attestations that confer neither disclosure nor epistemic authority.
+- [ ] Formalize capability/tool transport metadata as non-authoritative with respect to canonical memory and routing permission.
 - [ ] Formalize migration unknown-major rejection and extensions-only non-authoritative metadata.
-- [ ] Add finite reference models and counterexamples for invalid promotion, disclosure, migration, restore, and derived-index authority states.
+- [ ] Add finite reference models and counterexamples for invalid promotion, disclosure, migration, restore, derived-index, signature-authority, and tool-authority states.
 - [ ] Map each formal theorem to the corresponding protocol invariant, reference implementation behavior, and adversarial test.
 - [ ] Add Lean CI and require the archival theorem set to build without unresolved proof placeholders.
 - [ ] Produce a machine-readable theorem inventory for the archival record.
@@ -237,7 +246,7 @@ cryptographic library use != reimplementation of cryptographic proofs
 
 The archival surface should remain intentionally small and easy to cite: **three public uploads**.
 
-- [ ] Produce `AI-CONTEXT-v1.0.0-Overview.pdf`, a front-facing human technical report covering motivation, architecture, threat model, evidence, curation, routing, storage, restore/migration, derived indexes, conformance, Lean results, limitations, reproducibility, and citation.
+- [ ] Produce `AI-CONTEXT-v1.0.0-Overview.pdf`, a front-facing human technical report covering motivation, architecture, threat model, evidence, curation, routing, storage, restore/migration, derived indexes, interoperability/signed receipts, conformance, Lean results, limitations, reproducibility, and citation.
 - [ ] Produce `RELEASE-NOTES.md` as the machine-readable/human-readable release report containing tag, commit SHA, protocol/schema versions, phase status, theorem inventory summary, tests, limitations, artifact hashes, and reproduction commands.
 - [ ] Produce `AI-CONTEXT-1.0.0-source.zip` as an archival source bundle containing:
   - `reference-v1.0.0/` — exact source tree of the immutable GitHub `v1.0.0` tag;
