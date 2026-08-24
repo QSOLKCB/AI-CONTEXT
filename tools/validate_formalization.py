@@ -17,11 +17,86 @@ TARGET_COMMIT = "53d7d69dfacecf6f8605f5b6a51b2c68ee66572a"
 TARGET_TREE = "2c0592cbd074d7596e70681cc5ed869d6b9b00e4"
 
 THEOREM_RE = re.compile(r"(?m)^\s*theorem\s+([A-Za-z_][A-Za-z0-9_']*)")
+EXAMPLE_RE = re.compile(r"(?m)^\s*example\b")
 FORBIDDEN_PROOF_RE = re.compile(r"\b(sorry|admit|axiom)\b")
 
 
 def fail(message: str) -> None:
     raise RuntimeError(message)
+
+
+def strip_lean_comments_and_strings(text: str) -> str:
+    """Neutralize Lean line/block comments and string literals while preserving lines.
+
+    Lean block comments may nest. Preserving newlines keeps declaration locations stable,
+    while replacing other ignored characters with spaces prevents prose or string data from
+    being mistaken for declarations or proof placeholders.
+    """
+    out: list[str] = []
+    i = 0
+    block_depth = 0
+    in_string = False
+    escaped = False
+
+    while i < len(text):
+        if block_depth:
+            if text.startswith("/-", i):
+                block_depth += 1
+                out.extend("  ")
+                i += 2
+                continue
+            if text.startswith("-/", i):
+                block_depth -= 1
+                out.extend("  ")
+                i += 2
+                continue
+            ch = text[i]
+            out.append("\n" if ch == "\n" else " ")
+            i += 1
+            continue
+
+        if in_string:
+            ch = text[i]
+            if ch == "\n":
+                out.append("\n")
+            else:
+                out.append(" ")
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            i += 1
+            continue
+
+        if text.startswith("--", i):
+            out.extend("  ")
+            i += 2
+            while i < len(text) and text[i] != "\n":
+                out.append(" ")
+                i += 1
+            continue
+        if text.startswith("/-", i):
+            block_depth = 1
+            out.extend("  ")
+            i += 2
+            continue
+        if text[i] == '"':
+            in_string = True
+            escaped = False
+            out.append(" ")
+            i += 1
+            continue
+
+        out.append(text[i])
+        i += 1
+
+    if block_depth:
+        fail("unterminated Lean block comment in formal source")
+    if in_string:
+        fail("unterminated Lean string literal in formal source")
+    return "".join(out)
 
 
 def main() -> int:
@@ -38,10 +113,11 @@ def main() -> int:
     example_count = 0
     for path in lean_files:
         text = path.read_text(encoding="utf-8")
-        if FORBIDDEN_PROOF_RE.search(text):
+        semantic_text = strip_lean_comments_and_strings(text)
+        if FORBIDDEN_PROOF_RE.search(semantic_text):
             fail(f"unresolved or untrusted proof placeholder in {path.relative_to(ROOT)}")
-        declarations.update(THEOREM_RE.findall(text))
-        example_count += text.count("example :")
+        declarations.update(THEOREM_RE.findall(semantic_text))
+        example_count += len(EXAMPLE_RE.findall(semantic_text))
 
     if example_count < 8:
         fail("finite counterexample suite must contain at least eight checked Lean examples")
