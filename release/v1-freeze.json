@@ -35,10 +35,21 @@
   "release_tree_audit": {
     "required": true,
     "protocol": "AI-CONTEXT/RELEASE-AUDIT",
-    "scope": "tracked-public-git-tree"
+    "scope": "tracked-public-git-tree",
+    "verified_main_ci_run_id": 32723334976,
+    "verified_main_ci_run_number": 357,
+    "verified_main_ci_event": "push",
+    "verified_main_ci_conclusion": "success"
   },
   "tag_binding": {
     "tag": "v1.0.0",
-    "commit_rule": "the final immutable formalization target is the commit resolved by the v1.0.0 tag after release-candidate merge and exact-main CI success"
+    "resolved_commit_sha": "53d7d69dfacecf6f8605f5b6a51b2c68ee66572a",
+    "formalization_target_commit_sha": "53d7d69dfacecf6f8605f5b6a51b2c68ee66572a",
+    "git_tree_sha": "2c0592cbd074d7596e70681cc5ed869d6b9b00e4",
+    "tag_compare_status": "identical",
+    "tag_ahead_by": 0,
+    "tag_behind_by": 0,
+    "commit_rule": "the immutable Phase 12 formalization target is exactly the commit resolved by v1.0.0 after exact-main CI and release-audit success",
+    "recorded_post_tag": true
   }
 }
