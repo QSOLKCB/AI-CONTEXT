@@ -117,7 +117,7 @@ class ReleaseAuditUnitTests(unittest.TestCase):
         self.assertIn("secret-shaped-text", {row["kind"] for row in receipt["findings"]})
 
     def test_nul_containing_blob_is_still_scanned_for_secret_shape(self):
-        self.write("docs/blob.dat", b"prefix\x00-----BEGIN PRIVATE KEY-----\x00suffix")
+        self.write("docs/blob.dat", b"prefix\x00-----BEGIN PRIVATE KEY-----\x00suffix")  # synthetic test-only secret-shaped fixture
         receipt = self.audit("docs/blob.dat")
         self.assertIn("secret-shaped-text", {row["kind"] for row in receipt["findings"]})
 
