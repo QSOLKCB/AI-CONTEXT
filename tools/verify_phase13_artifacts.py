@@ -95,6 +95,8 @@ def safe_member(name: str) -> PurePosixPath:
         raise RuntimeError(f"non-canonical ZIP path: {name}")
     if path.parts[0] not in ALLOWED_TOP:
         raise RuntimeError(f"unexpected top-level ZIP entry: {name}")
+    if path.parts[0] == "ARCHIVE-MANIFEST.json" and len(path.parts) != 1:
+        raise RuntimeError(f"manifest name may not be used as a directory: {name}")
     return path
 
 
@@ -319,7 +321,15 @@ def verify_pdf(path: Path) -> None:
     if len(reader.pages) < 5:
         raise RuntimeError("Overview PDF is unexpectedly short")
     text = "\n".join((page.extract_text() or "") for page in reader.pages)
-    required = ["AI-CONTEXT v1.0.0", DOI, REFERENCE_COMMIT, "Lean 4 formalization", "Threat model and limits", "Citation"]
+    required = [
+        "AI-CONTEXT v1.0.0",
+        DOI,
+        REFERENCE_COMMIT,
+        "Lean 4",
+        "Formalization scope",
+        "Threat model and limits",
+        "Citation",
+    ]
     for needle in required:
         if needle not in text:
             raise RuntimeError(f"Overview PDF missing required text: {needle}")
