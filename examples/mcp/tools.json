@@ -18,9 +18,9 @@
     },
     {
       "name": "ai_context_validate_bundle",
-      "description": "Recompute and validate an existing routed bundle against current workspace state.",
+      "description": "Recompute and validate an existing routed bundle without initializing or upgrading workspace routing state.",
       "read_only": true,
-      "command_template": ["python3", "tools/validate_routing.py", "{workspace}", "--bundle", "{bundle}"]
+      "command_template": ["python3", "tools/validate_bundle_readonly.py", "{workspace}", "{bundle}"]
     },
     {
       "name": "ai_context_verify_signed_bundle",
