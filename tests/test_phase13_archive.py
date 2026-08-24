@@ -2,7 +2,8 @@ import hashlib
 import importlib.util
 import tempfile
 import unittest
-from pathlib import Path
+import zipfile
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,8 +42,9 @@ class Phase13ArchiveTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
             stage = td / "stage"
-            (stage / "reference-v1.0.0").mkdir(parents=True)
-            (stage / "reference-v1.0.0" / "A.txt").write_text("A\n", encoding="utf-8")
+            (stage / "reference-v1.0.0" / "docs").mkdir(parents=True)
+            (stage / "reference-v1.0.0" / "docs" / "A.txt").write_text("A\n", encoding="utf-8")
+            (stage / "reference-v1.0.0" / "docs-extra.txt").write_text("X\n", encoding="utf-8")
             (stage / "formal").mkdir()
             (stage / "formal" / "B.txt").write_text("B\n", encoding="utf-8")
             a = td / "a.zip"
@@ -50,6 +52,12 @@ class Phase13ArchiveTests(unittest.TestCase):
             self.build.deterministic_zip(stage, a)
             self.build.deterministic_zip(stage, b)
             self.assertEqual(a.read_bytes(), b.read_bytes())
+            with zipfile.ZipFile(a) as zf:
+                names = zf.namelist()
+                self.assertEqual(names, sorted(names, key=lambda name: PurePosixPath(name).parts))
+                for info in zf.infolist():
+                    self.assertEqual(info.date_time, self.build.FIXED_ZIP_DT)
+                    self.assertEqual((info.external_attr >> 16) & 0o177777, 0o100644)
 
     def test_release_notes_checksum_policy_is_non_circular(self):
         with tempfile.TemporaryDirectory() as td:
