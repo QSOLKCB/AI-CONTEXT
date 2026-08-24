@@ -20,6 +20,8 @@ import storage_legacy as legacy
 from storage_legacy import *  # noqa: F401,F403
 
 _ORIGINAL_BUILD_PARSER = legacy.build_parser
+_ORIGINAL_ROTATION_JOURNAL = legacy._rotation_journal
+_validate_manifest = legacy._validate_manifest
 
 
 def generate_key_file(path: Path) -> str:
@@ -425,7 +427,7 @@ class EncryptedDirectoryBackend:
 
 
 def _rotation_journal(root: Path) -> dict[str, Any]:
-    value = legacy._rotation_journal(root)
+    value = _ORIGINAL_ROTATION_JOURNAL(root)
     manifest = _validate_manifest(load_json(legacy._manifest_path(root)))
     if value["store_id"] != manifest["store_id"]:
         raise StorageError("rotation journal/store mismatch")
@@ -610,7 +612,6 @@ legacy._validate_envelope = _validate_envelope
 legacy._decrypt_envelope = _decrypt_envelope
 legacy.FilesystemBackend = FilesystemBackend
 legacy.EncryptedDirectoryBackend = EncryptedDirectoryBackend
-legacy._rotation_journal = _rotation_journal
 legacy._object_hashes = _object_hashes
 legacy.begin_rotation = begin_rotation
 legacy.resume_rotation = resume_rotation
