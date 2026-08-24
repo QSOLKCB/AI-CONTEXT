@@ -31,6 +31,12 @@ These rules are normative for AI-assisted changes to this repository.
 - Key rotation must be resumable or fail closed; partially rotated stores must never be treated as healthy active stores.
 - Deletion receipts must state the exact erasure scope. Never claim backup/key destruction from primary ciphertext deletion alone.
 - Key-destruction receipts are external-action attestations, not cryptographic proof that every usable key copy is gone.
+- Phase 8 restore reconstructs portable governed context only. `RESTORE != MODEL IDENTITY` and `RESTORED_CONTEXT != ORIGINAL_MODEL_INSTANCE`.
+- Restore archives must declare `provider_memory_dependency = none`; provider-side memory/session state is never a continuity prerequisite.
+- Style/culture enrichment has `factual_authority = none` and may influence presentation only. It must never enter canonical memory, evidence authority, curation approval, or disclosure permission.
+- Raw vault/provider exports and generated historical bundles are not silently promoted into restore continuity requirements.
+- Unknown restore/workspace major versions must fail closed. Never guess through a major-version authority or canonicalization change.
+- Additive restore/migration metadata is permitted only inside the explicit non-authoritative `extensions` container.
 - Derived vector/graph/search indexes are projections, never authority.
 - Do not claim cross-runtime canonical byte equivalence unless a future canonicalizer contract proves it.
 - Restore means reconstruction of curated context, not recreation of a model identity or hidden provider state.
@@ -40,15 +46,18 @@ These rules are normative for AI-assisted changes to this repository.
 - Keep the reference path dependency-light and local-first unless a dependency materially improves security.
 - For cryptography, never invent primitives. Use maintained reviewed libraries and document the security boundary.
 - Do not implement custom block modes, KDFs, MAC constructions, nonce schemes, key wrapping, or password encryption.
-- Archive readers must reject path traversal and enforce resource bounds.
+- Archive readers must reject path traversal, duplicate members, unsafe symlinks, and resource-limit violations.
 - Storage logical paths must reject traversal and absolute-path escape.
+- Restore export must reject symlinked source artifacts; restore destinations must be assembled off-path and published only after complete validation.
 - New import adapters require synthetic fixtures and format-drift failure tests.
-- Changes to canonicalization, ids, schemas, sensitivity semantics, promotion rules, curation authority, mutation semantics, routing policy, dependency expansion, disclosure diagnostics, storage envelopes, key metadata, or deletion/erasure semantics require protocol/migration review.
+- Changes to canonicalization, ids, schemas, sensitivity semantics, promotion rules, curation authority, mutation semantics, routing policy, dependency expansion, disclosure diagnostics, storage envelopes, key metadata, deletion/erasure semantics, restore manifests, continuity classes, migration rules, or enrichment authority require protocol/migration review.
 - Curation write paths must be explicit and fail closed when approval, provenance, conflict resolution, or actor authority is ambiguous.
 - Routing must fail closed when a required dependency cannot be disclosed to the selected target.
 - Routing policy/profile normalization must reject unknown fields rather than ignoring policy typos.
 - Encrypted storage must authenticate ciphertext and relevant metadata before plaintext is accepted.
 - Encrypted-store normal access must fail while a rotation journal is present.
+- Restore must validate declared artifact hashes and byte lengths before the destination workspace becomes visible.
+- Migration manifests must record explicit source/target versions and may not hide payload transformations.
 - Security-sensitive behavior must fail closed.
 
 ## Test expectations
@@ -87,5 +96,11 @@ At minimum preserve tests for:
 - storage deletion receipts do not overclaim cryptographic erasure;
 - active keys cannot be attested as destroyed;
 - storage schemas contain key identifiers only, never key material;
-- unknown-major/version rejection once migration support lands;
+- minimum cold-start restore with no provider-side memory dependency;
+- full restore preserves curation/provenance working state;
+- failed or corrupt restore leaves no partial destination;
+- style/culture enrichment cannot alter canonical memory or factual authority;
+- unknown restore/workspace major-version rejection;
+- additive `extensions` metadata does not change restore snapshot authority;
+- cross-provider restored routing preserves the same canonical record set;
 - deletion/tombstone propagation once lifecycle mutation lands.

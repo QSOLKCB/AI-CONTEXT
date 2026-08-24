@@ -59,7 +59,7 @@ Provider export formats are inputs, not stable APIs. Each adapter must carry an 
 - [x] Data-only adapter plugin interface for community JSON sources.
 - [x] Migration fixtures and machine-readable manifest for provider format drift.
 
-**Phase 3 complete.** ChatGPT and Claude retain the Phase 1 import path but are now protected by exact/partial/reject migration fixtures. Higher-churn providers use `tools/provider_import.py`, which normalizes Gemini Takeout, Grok account exports, browser chat archives, and data-only community plugin mappings into the same Phase 1 staging/receipt contract. Provider layout identity is recorded separately from adapter id/version. Unknown layouts fail closed; known lossy layouts remain explicitly `partial`. Provider-private reasoning-like fields are not silently promoted into ordinary staging observations.
+**Phase 3 complete.** ChatGPT and Claude retain the Phase 1 import path but are protected by exact/partial/reject migration fixtures. Higher-churn providers use `tools/provider_import.py`, which normalizes Gemini Takeout, Grok account exports, browser chat archives, and data-only community plugin mappings into the same staging/receipt contract. Unknown layouts fail closed; known lossy layouts remain explicitly `partial`.
 
 ## Phase 4 — Repository and document context
 
@@ -73,7 +73,7 @@ Provider export formats are inputs, not stable APIs. Each adapter must carry an 
 - [x] Optional email archive adapter.
 - [x] Duplicate-content collapse without destroying provenance.
 
-**Phase 4 complete.** `tools/evidence_import.py` creates deterministic source snapshots, source-evidence authority metadata, exact Git commit/tree/tag identities, conservative unverified release identities, line-addressed document chunks, Drive/Takeout evidence, RFC 5322/MIME email evidence, and content-addressed duplicate collapse. Unique payloads live once in `staging/content.jsonl`; independent source observations continue to preserve path/range/message provenance and are joined through the deterministic `staging/content-index.json`. `tools/validate_evidence.py` verifies snapshot/content identities, receipt cardinality, content references, and duplicate-provenance groups. Source authority ranks are precedence hints inside the source-evidence domain and never imply that a source claim is true.
+**Phase 4 complete.** `tools/evidence_import.py` creates deterministic source snapshots, source-evidence authority metadata, Git identities, line-addressed chunks, Drive/Takeout evidence, RFC 5322/MIME email evidence, and representation-aware duplicate collapse. `tools/validate_evidence.py` validates receipt/snapshot/content/provenance relationships.
 
 ## Phase 5 — Curation engine
 
@@ -87,11 +87,11 @@ Provider export formats are inputs, not stable APIs. Each adapter must carry an 
 - [x] Tombstone receipts.
 - [x] “Why is this remembered?” provenance explanation.
 
-**Phase 5 complete.** `tools/curation.py` implements a pending candidate queue, human/policy review decisions, explicit candidate application, advisory-only local-LLM request/response envelopes, semantic-key conflict detection, supersession edges, receipted confidence/verification/lifecycle mutations, retention policy enforcement, tombstone receipts, and provenance explanations that trace canonical memory back through curation, observations, import receipts, Phase 4 source snapshots, and content objects. `tools/validate_curation.py` validates candidate identities, review chains, application authority, mutation chains, supersession/tombstone receipts, and the rule that LLM suggestions never count as human/policy approval.
+**Phase 5 complete.** `tools/curation.py` implements pending candidates, human/policy decisions, explicit application, advisory-only local-LLM envelopes, conflict detection, supersession, receipted mutations, retention, tombstones, and provenance explanations. `tools/validate_curation.py` validates the authority and mutation chains.
 
 ### Curation security gate
 
-No automated semantic extractor or local LLM may write directly to canonical memory. It may only propose pending candidates or advisory suggestions. The reference `apply` path requires a latest explicit `approve` decision whose actor is `human` or `policy`. Content corrections create new canonical records plus supersession edges; curation mutations cannot silently rewrite content, sensitivity, record type, tags, or provenance.
+No automated semantic extractor or local LLM may write directly to canonical memory. It may only propose pending candidates or advisory suggestions. Canonical application requires a latest explicit `approve` decision from a `human` or `policy` actor.
 
 ## Phase 6 — Selective disclosure and routing
 
@@ -104,11 +104,11 @@ No automated semantic extractor or local LLM may write directly to canonical mem
 - [x] Dependency expansion with fail-closed ambiguity handling.
 - [x] Minimum-context diagnostics explaining why each record entered a bundle.
 
-**Phase 6 complete.** `tools/routing.py` turns the public `bundle` command into a deterministic disclosure router. Profiles combine record-type/tag/sensitivity policy with lexical task selection and explicit semantic aliases. `routing/policy.json` defines separate provider and local-model targets, confidence/verification gates, optional Phase 5 application requirements, and hard exclusions for record ids/types, epistemic states, source observations, and exact content paths. Required dependencies are declared by active canonical `relationship` records using `depends_on` or `requires`; exact memory endpoints resolve directly while semantic-key endpoints must resolve to exactly one active record or routing fails closed. Dependency expansion bypasses only positive relevance selectors and never bypasses approval, lifecycle, sensitivity, target policy, or hard exclusions. Routed bundles carry deterministic per-record diagnostics explaining direct tag/task selection and dependency inclusion without listing withheld records. `tools/validate_routing.py` recomputes routing decisions and rejects stale or policy-divergent bundles.
+**Phase 6 complete.** `tools/routing.py` is a deterministic disclosure firewall over canonical memory. Relevance never grants disclosure permission; dependencies cannot bypass approval, lifecycle, target policy, sensitivity, verification, or hard exclusions.
 
 ### Disclosure security gate
 
-Routing is a read-only projection over canonical memory. Task selection and dependency expansion may establish relevance, but they never grant disclosure permission. A required dependency that violates the profile, target, sensitivity, lifecycle, approval, or hard-exclusion boundary causes bundle construction to fail instead of silently leaking or silently omitting required context.
+Routing is a read-only projection over canonical memory. A required dependency that cannot legally be disclosed causes bundle construction to fail rather than silently leak or silently omit required context.
 
 ## Phase 7 — Encrypted storage boundary
 
@@ -120,23 +120,29 @@ Routing is a read-only projection over canonical memory. Task selection and depe
 - [x] Cryptographic erasure/deletion receipt strategy.
 - [x] Recovery-key guidance that does not place keys inside AI-CONTEXT memory.
 
-**Phase 7 complete.** `tools/storage.py` defines a storage-backend protocol plus plaintext filesystem and encrypted-directory implementations. The encrypted reference backend uses AES-256-GCM from the maintained `cryptography` package, stores only non-secret SHA-256-derived key identifiers, keeps key files outside the store, authenticates protocol/algorithm/key/path metadata as AEAD associated data, and hides plaintext logical paths inside ciphertext. Rotation is journalled and normal access fails closed while a rotation is incomplete; object envelopes carry their actual key id so interrupted rotations can resume using the old and new external keys. The storage manifest records active/retired key history and replacement relationships. Primary ciphertext deletion emits a conservative receipt that explicitly does not claim key destruction; optional key-destruction receipts are labelled self-attested external actions rather than cryptographic proof. `docs/STORAGE.md` and `docs/ENCRYPTION-THREAT-MODELS.md` document filesystem/full-disk encryption, age, encrypted SQLite, hardware-backed custody, recovery guidance, metadata leakage, live-process limits, backup semantics, and cryptographic-erasure boundaries.
+**Phase 7 complete.** `tools/storage.py` defines plaintext and AES-256-GCM encrypted-directory backends using the maintained `cryptography` package. Store identity is authenticated, keys remain external, rotation is resumable/fail-closed, and deletion receipts state only the erasure scope actually established.
 
 ### Encryption gate
 
-Do not invent custom cryptography. The protocol may define envelopes and key identifiers, but encryption implementations must use maintained, reviewed primitives/libraries. Keys and recovery material remain external capabilities and never become AI-CONTEXT canonical memory, curation state, routing data, storage metadata, or public fixtures.
+Do not invent custom cryptography. Keys and recovery material remain external capabilities and never become AI-CONTEXT canonical memory, curation state, routing data, storage metadata, or public fixtures.
 
 ## Phase 8 — Restore and migration
 
-- [ ] Portable restore manifest.
-- [ ] Minimum continuity set.
-- [ ] Full working set.
-- [ ] Optional style/culture enrichment class with no factual authority.
-- [ ] Version migration manifest.
-- [ ] Unknown-major rejection.
-- [ ] Additive-compatible metadata rules.
-- [ ] Cold-start restore test with no provider memory dependency.
-- [ ] Cross-provider restore demonstration.
+- [x] Portable restore manifest.
+- [x] Minimum continuity set.
+- [x] Full working set.
+- [x] Optional style/culture enrichment class with no factual authority.
+- [x] Version migration manifest.
+- [x] Unknown-major rejection.
+- [x] Additive-compatible metadata rules.
+- [x] Cold-start restore test with no provider memory dependency.
+- [x] Cross-provider restore demonstration.
+
+**Phase 8 complete.** `tools/restore.py` exports deterministic `.aicr` archives with hashed restore/migration manifests and declared payload hashes. The minimum continuity set is dependency-closed: in addition to workspace policy, canonical memory, profiles, and routing policy, it preserves the observations, receipts, and Phase 5 authority history required to validate remembered records and preserve provider-disclosure eligibility. The full working set is a strict superset that additionally preserves the broader staging/content evidence graph and complete working history while deliberately excluding raw vault exports and historical generated bundles. Full re-exports preserve installed style/culture enrichment. Archive validation performs a throwaway semantic restore so a hash-consistent but semantically invalid third-party archive fails before publication. Unknown majors fail closed, non-authoritative migration `extensions` do not alter snapshot identity, and failed restores leave no partial destination.
+
+### Restore security gate
+
+Restore reconstructs governed context; it never recreates a model identity, provider-side memory, hidden reasoning state, or chain of thought. Style/culture enrichment is presentation-only with zero factual authority. Full archives must contain the minimum base set, and migration transformations must be explicit.
 
 ## Phase 9 — Derived indexes
 
@@ -169,17 +175,82 @@ Indexes are retrieval accelerators. They never outrank canonical memory or sourc
 - [ ] One-command export/restore flow.
 - [ ] Safe defaults for non-programmers.
 
-## v1.0 release gate
+## v1.0 architecture completion sequence
 
-AI-CONTEXT v1.0 should not be declared until:
+The implementation architecture is frozen **before** formalization. Lean 4 must describe the released protocol rather than become another place to change it.
 
-1. canonical schemas are versioned;
-2. import receipts and canonical records pass conformance tests;
-3. archive and secret-ingestion security tests pass;
-4. deterministic bundle fixtures pass byte-for-byte;
-5. unknown-major protocol versions fail closed;
-6. deletion/tombstone propagation is tested;
-7. at least two independent AI-export formats and one repository/document source can round-trip through staging;
-8. a cold-start restore succeeds without provider-side memory;
-9. private raw input is demonstrably absent from all public test fixtures;
-10. the documentation clearly distinguishes context continuity from AI/model identity.
+- [ ] Complete Phases 9–11.
+- [ ] Run the complete conformance/security/adversarial suite on the intended release commit.
+- [ ] Freeze public protocol names, schemas, canonical invariants, and migration rules for v1.0.
+- [ ] Perform a final public-tree audit for private data, credentials, keys, generated workspaces, caches, and accidental artifacts.
+- [ ] Produce final `RELEASE-NOTES.md` for the GitHub release candidate.
+- [ ] Tag the exact frozen commit as `v1.0.0`.
+- [ ] Record the v1.0.0 tag commit SHA as the immutable formalization target.
+
+### v1.0 release gate status
+
+AI-CONTEXT v1.0 must not be declared until every item is checked:
+
+- [x] Canonical schemas are versioned.
+- [x] Import receipts and canonical records pass conformance tests.
+- [x] Archive and secret-ingestion security tests pass.
+- [x] Deterministic bundle fixtures pass byte-for-byte.
+- [x] Unknown-major protocol/workspace restore versions fail closed.
+- [x] Deletion/tombstone propagation is tested.
+- [x] At least two independent AI-export formats and one repository/document source round-trip through staging.
+- [x] A cold-start restore succeeds without provider-side memory.
+- [ ] Final release-candidate audit demonstrates that private raw input, credentials, storage keys, recovery material, and user workspace artifacts are absent from the public release tree.
+- [x] Documentation clearly distinguishes context continuity from AI/model identity.
+
+## Phase 12 — Lean 4 formalization of frozen v1.0.0
+
+**Starts only after the `v1.0.0` tag exists.** Formalization targets that exact immutable commit. Later implementation changes require a new formalization target/version rather than silently changing the theorem subject.
+
+- [ ] Pin Lean toolchain and Lake project metadata.
+- [ ] Define formal core datatypes for trust zones, record classes, sensitivity, epistemic state, lifecycle, authority, and disclosure targets.
+- [ ] Formalize `SOURCE != MEMORY` and candidate/application authority boundaries.
+- [ ] Formalize sensitivity non-downgrade and secret-memory exclusions.
+- [ ] Formalize curation review/application, supersession, tombstone, and mutation invariants.
+- [ ] Formalize `RELEVANT != PERMITTED` and `DEPENDENCY != PERMISSION BYPASS`.
+- [ ] Formalize restore continuity without model-identity claims.
+- [ ] Formalize style/culture enrichment as having zero factual authority.
+- [ ] Formalize storage/encryption as persistence properties that confer no epistemic authority; do not attempt to re-prove AES-GCM itself.
+- [ ] Formalize migration unknown-major rejection and extensions-only non-authoritative metadata.
+- [ ] Add finite reference models and counterexamples for invalid promotion, disclosure, migration, and restore states.
+- [ ] Map each formal theorem to the corresponding protocol invariant, reference implementation behavior, and adversarial test.
+- [ ] Add Lean CI and require the archival theorem set to build without unresolved proof placeholders.
+- [ ] Produce a machine-readable theorem inventory for the archival record.
+
+### Formalization authority rule
+
+```text
+v1.0.0 tagged implementation + schemas = formalization target
+Lean proofs = selected invariant proofs about that target
+Lean proof != proof of every implementation detail
+cryptographic library use != reimplementation of cryptographic proofs
+```
+
+## Phase 13 — Scholarly report and Zenodo archival record
+
+The archival surface should remain intentionally small and easy to cite: **three public uploads**.
+
+- [ ] Produce `AI-CONTEXT-v1.0.0-Overview.pdf`, a front-facing human technical report covering motivation, architecture, threat model, evidence, curation, routing, storage, restore/migration, conformance, Lean results, limitations, reproducibility, and citation.
+- [ ] Produce `RELEASE-NOTES.md` as the machine-readable/human-readable release report containing tag, commit SHA, protocol/schema versions, phase status, theorem inventory summary, tests, limitations, artifact hashes, and reproduction commands.
+- [ ] Produce `AI-CONTEXT-1.0.0-source.zip` as an archival source bundle containing:
+  - `reference-v1.0.0/` — exact source tree of the immutable GitHub `v1.0.0` tag;
+  - `formal/` — Lean 4 formalization of that exact tag;
+  - `ARCHIVE-MANIFEST` — binds both components to the v1.0.0 tag/commit and records hashes/toolchain metadata.
+- [ ] Verify the source ZIP contains no private workspaces, raw exports, credentials, keys, recovery material, build caches, virtual environments, or unrelated generated artifacts.
+- [ ] Put SHA-256 hashes for all three Zenodo uploads inside `RELEASE-NOTES.md` so a fourth checksum file is unnecessary.
+- [ ] Reproduce the reference test suite and Lean theorem build from the clean archival source bundle.
+- [ ] Create a Zenodo **Software** record for AI-CONTEXT v1.0.0 with exactly:
+  1. `AI-CONTEXT-1.0.0-source.zip`
+  2. `AI-CONTEXT-v1.0.0-Overview.pdf`
+  3. `RELEASE-NOTES.md`
+- [ ] Record repository URL, exact tag, exact commit SHA, license, creators/contributors, keywords, related identifiers, and formalization scope in Zenodo metadata.
+- [ ] Publish the Zenodo record and obtain the version DOI/concept DOI.
+- [ ] Add the DOI and canonical citation back to the GitHub release/README without modifying the already frozen v1.0.0 source tag.
+
+### Archival provenance rule
+
+The Lean formalization is created **after** the v1.0.0 tag, so the archival source ZIP is a compound scholarly source bundle, not a claim that Lean files existed in the original tag. `reference-v1.0.0/` must be byte-for-byte derived from the tag, while `formal/` explicitly identifies that tag as its theorem target.
