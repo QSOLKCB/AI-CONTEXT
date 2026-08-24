@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/storage-key-event.schema.json",
+  "title": "AI-CONTEXT Storage Key Event Receipt",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "store_id", "event", "key_id", "claim_strength", "actor", "reason", "created_at"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^storage-key-event\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/STORAGE-KEY-EVENT"},
+    "schema_version": {"const": "0.1.0"},
+    "store_id": {"type": "string", "pattern": "^store\\.[0-9a-f]{32}$"},
+    "event": {"const": "external-key-destruction-attestation"},
+    "key_id": {"type": "string", "pattern": "^key\\.sha256:[0-9a-f]{64}$"},
+    "claim_strength": {"const": "self-attested-external-action"},
+    "actor": {"type": "string", "minLength": 1},
+    "reason": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}
