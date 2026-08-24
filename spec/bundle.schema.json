@@ -26,7 +26,49 @@
       "type": "array",
       "items": {"$ref": "memory-record.schema.json"}
     },
+    "routing": {
+      "type": "object",
+      "required": [
+        "target",
+        "target_kind",
+        "effective_sensitivity_ceiling",
+        "task",
+        "task_terms",
+        "profile_sha256",
+        "routing_policy_sha256",
+        "dependency_expansion"
+      ],
+      "properties": {
+        "target": {"type": "string", "minLength": 1},
+        "target_kind": {"enum": ["provider", "local_model"]},
+        "effective_sensitivity_ceiling": {"enum": ["public", "private", "restricted"]},
+        "task": {"type": ["string", "null"]},
+        "task_terms": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "profile_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "routing_policy_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "dependency_expansion": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {"$ref": "routing-diagnostic.schema.json"}
+    },
     "canonical_payload_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
   },
+  "allOf": [
+    {
+      "if": {"required": ["routing"]},
+      "then": {"required": ["diagnostics"]}
+    },
+    {
+      "if": {"required": ["diagnostics"]},
+      "then": {"required": ["routing"]}
+    }
+  ],
   "additionalProperties": false
 }

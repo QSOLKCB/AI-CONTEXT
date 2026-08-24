@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/routing-diagnostic.schema.json",
+  "title": "AI-CONTEXT Routed Record Diagnostic",
+  "type": "object",
+  "required": ["memory_id", "included_by", "tag_matches", "task_matches", "dependency_of", "dependency_depth"],
+  "properties": {
+    "memory_id": {"type": "string", "minLength": 1},
+    "included_by": {
+      "type": "array",
+      "items": {"enum": ["profile_baseline", "tag_selector", "task_selector", "dependency_expansion", "dependency_relationship"]},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "tag_matches": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "task_matches": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "dependency_of": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "dependency_depth": {"type": ["integer", "null"], "minimum": 0}
+  },
+  "additionalProperties": false
+}

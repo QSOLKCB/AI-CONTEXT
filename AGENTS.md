@@ -19,6 +19,12 @@ These rules are normative for AI-assisted changes to this repository.
 - Never store credentials, API keys, private keys, cookies, recovery codes, or bearer tokens as canonical AI memory.
 - Unknown provider/export layouts must fail explicitly or be labelled generic/partial. Never pretend an unknown schema was parsed exactly.
 - Preserve provenance identifiers and source hashes.
+- Phase 6 routing is a read-only disclosure projection. It must never mutate canonical memory or curation authority state.
+- Task/tag relevance is not disclosure authority. A selector match may never bypass sensitivity, target policy, lifecycle, approval, or hard exclusions.
+- A required dependency may bypass positive relevance selectors only. `DEPENDENCY != PERMISSION BYPASS`.
+- Ambiguous or missing semantic dependency endpoints must fail closed. Do not rank or guess among multiple possible memories.
+- Provider and local-model disclosure targets are distinct policy classes. Never silently treat an external provider as equivalent to a local target.
+- Routing diagnostics explain included records only; do not turn a bundle into an inventory of records withheld by policy.
 - Derived vector/graph/search indexes are projections, never authority.
 - Do not claim cross-runtime canonical byte equivalence unless a future canonicalizer contract proves it.
 - Restore means reconstruction of curated context, not recreation of a model identity or hidden provider state.
@@ -29,8 +35,10 @@ These rules are normative for AI-assisted changes to this repository.
 - For cryptography, never invent primitives. Use maintained reviewed libraries and document the security boundary.
 - Archive readers must reject path traversal and enforce resource bounds.
 - New import adapters require synthetic fixtures and format-drift failure tests.
-- Changes to canonicalization, ids, schemas, sensitivity semantics, promotion rules, curation authority, or mutation semantics require protocol/migration review.
+- Changes to canonicalization, ids, schemas, sensitivity semantics, promotion rules, curation authority, mutation semantics, routing policy, dependency expansion, or disclosure diagnostics require protocol/migration review.
 - Curation write paths must be explicit and fail closed when approval, provenance, conflict resolution, or actor authority is ambiguous.
+- Routing must fail closed when a required dependency cannot be disclosed to the selected target.
+- Routing policy/profile normalization must reject unknown fields rather than ignoring policy typos.
 - Security-sensitive behavior must fail closed.
 
 ## Test expectations
@@ -53,5 +61,12 @@ At minimum preserve tests for:
 - retention expiry affects disclosure without deleting history;
 - tombstone receipts and bundle exclusion;
 - provenance explanation links memory back to review and source evidence;
+- task and tag selectors produce deterministic minimum-context bundles;
+- provider/local-model targets enforce different disclosure ceilings when configured;
+- hard exclusions cannot be bypassed by positive selectors;
+- dependency expansion cannot bypass disclosure gates;
+- ambiguous semantic dependency references fail closed;
+- routed diagnostics explain every included record;
+- stale routed bundles fail validation after profile/policy changes;
 - unknown-major/version rejection once migration support lands;
 - deletion/tombstone propagation once lifecycle mutation lands.

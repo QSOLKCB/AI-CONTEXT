@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/profile.schema.json",
+  "title": "AI-CONTEXT Disclosure Profile",
+  "type": "object",
+  "required": ["protocol", "schema_version", "name", "include_tags", "exclude_tags", "record_types", "max_sensitivity"],
+  "properties": {
+    "protocol": {"const": "AI-CONTEXT/PROFILE"},
+    "schema_version": {"const": "0.1.0"},
+    "name": {"type": "string", "minLength": 1},
+    "include_tags": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "exclude_tags": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "record_types": {
+      "type": "array",
+      "items": {
+        "enum": ["fact", "preference", "project_state", "decision", "claim", "hypothesis", "instruction", "relationship", "publication", "event", "environment", "provenance_policy"]
+      },
+      "uniqueItems": true
+    },
+    "max_sensitivity": {"enum": ["public", "private", "restricted"]},
+    "task_selector": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "min_matches": {"type": "integer", "minimum": 1, "maximum": 32},
+        "aliases": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "uniqueItems": true
+          }
+        },
+        "search_notes": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "hard_exclusions": {"$ref": "disclosure-exclusions.schema.json"},
+    "dependency_policy": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "max_depth": {"type": "integer", "minimum": 0, "maximum": 32},
+        "fail_on_cycle": {"type": "boolean"},
+        "include_relationship_records": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/disclosure-exclusions.schema.json",
+  "title": "AI-CONTEXT Disclosure Hard Exclusions",
+  "type": "object",
+  "properties": {
+    "record_ids": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "record_types": {
+      "type": "array",
+      "items": {
+        "enum": ["fact", "preference", "project_state", "decision", "claim", "hypothesis", "instruction", "relationship", "publication", "event", "environment", "provenance_policy"]
+      },
+      "uniqueItems": true
+    },
+    "epistemic_states": {
+      "type": "array",
+      "items": {"enum": ["observed", "retrieved", "parsed", "inferred", "remembered", "user_asserted", "verified", "unknown"]},
+      "uniqueItems": true
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "content_paths": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "pattern": "^[^.*]+(?:\\.[^.*]+)*$"},
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Phase 5-gated public AI-CONTEXT CLI.
+"""Phase 5/6-gated public AI-CONTEXT CLI.
 
 The Phase 1 implementation is retained in ai_context_legacy.py for internal compatibility
 and conformance tests. New canonical promotion through the public CLI is disabled; use
-tools/curation.py propose/review/apply instead.
+tools/curation.py propose/review/apply instead. Public bundle generation is routed through
+the Phase 6 selective-disclosure engine.
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import ai_context_legacy as legacy
@@ -28,6 +30,9 @@ def cmd_init(args) -> None:
     legacy._PHASE5_ORIGINAL_CMD_INIT(args)
     workspace = Path(args.workspace).expanduser().resolve()
     _ensure_curation_ignored(workspace)
+    # Lazy import prevents a module cycle: routing depends only on ai_context_legacy.
+    import routing
+    routing.ensure_routing(workspace)
 
 
 def cmd_promote(args) -> None:
@@ -43,6 +48,11 @@ legacy.cmd_promote = cmd_promote
 
 
 def main() -> int:
+    # Phase 6 adds --task and --target options that the Phase 1 argparse surface does not
+    # know about, so bundle is intercepted before the compatibility parser runs.
+    if len(sys.argv) > 1 and sys.argv[1] == "bundle":
+        import routing
+        return routing.main_bundle(sys.argv[2:])
     return legacy.main()
 
 
