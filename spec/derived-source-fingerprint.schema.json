@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/derived-source-fingerprint.schema.json",
+  "title": "AI-CONTEXT Derived Index Source Fingerprint",
+  "type": "object",
+  "required": [
+    "id",
+    "protocol",
+    "schema_version",
+    "canonicalizer",
+    "retrieval_policy",
+    "canonical_store_sha256",
+    "canonical_record_count",
+    "retrieval_records_sha256",
+    "retrieval_record_count"
+  ],
+  "properties": {
+    "id": {"type": "string", "pattern": "^index-source\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/DERIVED-SOURCE-FINGERPRINT"},
+    "schema_version": {"const": "0.1.0"},
+    "canonicalizer": {"const": "python-json-v0.1"},
+    "retrieval_policy": {"const": "approved-active-v1"},
+    "canonical_store_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "canonical_record_count": {"type": "integer", "minimum": 0},
+    "retrieval_records_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "retrieval_record_count": {"type": "integer", "minimum": 0}
+  },
+  "additionalProperties": false
+}
