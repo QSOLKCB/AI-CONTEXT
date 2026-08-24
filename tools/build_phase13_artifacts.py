@@ -5,12 +5,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import shutil
+import os
 import subprocess
 import tarfile
 import tempfile
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from reportlab import rl_config
 from reportlab.lib import colors
@@ -18,10 +18,7 @@ from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import (
-    BaseDocTemplate, Frame, PageTemplate, Paragraph, Spacer, PageBreak,
-    Table, TableStyle, Flowable,
-)
+from reportlab.platypus import BaseDocTemplate, Frame, PageBreak, PageTemplate, Paragraph, Spacer
 
 ROOT = Path(__file__).resolve().parents[1]
 REFERENCE_TAG = "v1.0.0"
@@ -33,6 +30,7 @@ LEAN_TOOLCHAIN = "leanprover/lean4:v4.30.0"
 SOURCE_ZIP = "AI-CONTEXT-1.0.0-source.zip"
 OVERVIEW_PDF = "AI-CONTEXT-v1.0.0-Overview.pdf"
 RELEASE_NOTES = "RELEASE-NOTES.md"
+EXPECTED_ARTIFACTS = {SOURCE_ZIP, OVERVIEW_PDF, RELEASE_NOTES}
 FIXED_ZIP_DT = (1980, 1, 1, 0, 0, 0)
 FORMAL_PATHS = [
     "formal",
@@ -43,13 +41,21 @@ FORMAL_PATHS = [
     "docs/FORMALIZATION.md",
     "release/v1-freeze.json",
 ]
+MAX_ARCHIVE_MEMBERS = 10_000
+MAX_ARCHIVE_FILE_BYTES = 64 * 1024 * 1024
+MAX_ARCHIVE_TOTAL_BYTES = 256 * 1024 * 1024
 
 
-def run(*args: str, cwd: Path | None = None, capture: bool = True) -> str:
-    cp = subprocess.run(args, cwd=cwd or ROOT, check=True, text=True,
-                        stdout=subprocess.PIPE if capture else None,
-                        stderr=subprocess.PIPE if capture else None)
-    return cp.stdout.strip() if capture else ""
+def run(*args: str, cwd: Path | None = None) -> str:
+    cp = subprocess.run(
+        args,
+        cwd=cwd or ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return cp.stdout.strip()
 
 
 def sha256_file(path: Path) -> str:
@@ -67,51 +73,86 @@ def assert_git_bindings() -> None:
     tree = run("git", "rev-parse", f"{REFERENCE_COMMIT}^{{tree}}")
     if tree != REFERENCE_TREE:
         raise RuntimeError(f"reference tree is {tree}, expected {REFERENCE_TREE}")
-    cp = subprocess.run(["git", "diff", "--quiet", FORMAL_COMMIT, "HEAD", "--", *FORMAL_PATHS], cwd=ROOT)
-    if cp.returncode != 0:
-        raise RuntimeError("formalization source drifted from the reviewed Phase 12 integration commit")
+    formal_commit = run("git", "rev-parse", f"{FORMAL_COMMIT}^{{commit}}")
+    if formal_commit != FORMAL_COMMIT:
+        raise RuntimeError("Phase 12 formalization commit is unavailable or ambiguous")
+
+
+def _safe_tar_path(name: str) -> PurePosixPath:
+    if "\\" in name:
+        raise RuntimeError(f"unsafe Git archive path: {name}")
+    path = PurePosixPath(name)
+    if path.is_absolute() or ".." in path.parts or not path.parts:
+        raise RuntimeError(f"unsafe Git archive path: {name}")
+    if path.as_posix() != name.rstrip("/"):
+        raise RuntimeError(f"non-canonical Git archive path: {name}")
+    return path
+
+
+def export_git_archive(ref: str, dest: Path, paths: list[str] | None = None) -> None:
+    """Export regular-file bytes directly from a bound Git object, never the worktree."""
+    dest.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix="ai-context-git-archive-", suffix=".tar", delete=False) as tmp:
+        tar_path = Path(tmp.name)
+        cmd = ["git", "archive", "--format=tar", ref]
+        if paths:
+            cmd.extend(["--", *paths])
+        subprocess.run(cmd, cwd=ROOT, check=True, stdout=tmp)
+    try:
+        with tarfile.open(tar_path, "r:") as tf:
+            members = tf.getmembers()
+            if len(members) > MAX_ARCHIVE_MEMBERS:
+                raise RuntimeError("Git archive exceeds member-count limit")
+            total = 0
+            for member in members:
+                _safe_tar_path(member.name)
+                if member.isdir():
+                    continue
+                if not member.isfile():
+                    raise RuntimeError(f"Git archive contains non-regular member: {member.name}")
+                if member.size > MAX_ARCHIVE_FILE_BYTES:
+                    raise RuntimeError(f"Git archive member exceeds size limit: {member.name}")
+                total += member.size
+                if total > MAX_ARCHIVE_TOTAL_BYTES:
+                    raise RuntimeError("Git archive exceeds total expanded-size limit")
+            for member in members:
+                if member.isdir():
+                    continue
+                rel = _safe_tar_path(member.name)
+                target = dest.joinpath(*rel.parts)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source = tf.extractfile(member)
+                if source is None:
+                    raise RuntimeError(f"could not read Git archive member: {member.name}")
+                data = source.read(MAX_ARCHIVE_FILE_BYTES + 1)
+                if len(data) != member.size:
+                    raise RuntimeError(f"Git archive member size mismatch: {member.name}")
+                target.write_bytes(data)
+    finally:
+        tar_path.unlink(missing_ok=True)
 
 
 def export_reference_tree(dest: Path) -> None:
-    # Keep this helper self-contained: the staging root does not exist yet on a clean build.
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tar_path = dest.parent / "reference.tar"
-    with tar_path.open("wb") as fh:
-        subprocess.run(["git", "archive", "--format=tar", REFERENCE_TAG], cwd=ROOT, check=True, stdout=fh)
-    dest.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(tar_path, "r:") as tf:
-        for member in tf.getmembers():
-            if member.issym() or member.islnk():
-                raise RuntimeError(f"tag archive unexpectedly contains link: {member.name}")
-            target = (dest / member.name).resolve()
-            if dest.resolve() not in target.parents and target != dest.resolve():
-                raise RuntimeError(f"unsafe archive member: {member.name}")
-        tf.extractall(dest)
-    tar_path.unlink()
+    # The tag is verified above, but the bytes are exported by immutable commit SHA.
+    export_git_archive(REFERENCE_COMMIT, dest)
 
 
 def export_formal_layer(dest: Path) -> None:
-    dest.mkdir(parents=True, exist_ok=True)
-    for rel in FORMAL_PATHS:
-        src = ROOT / rel
-        out = dest / rel
-        if src.is_dir():
-            shutil.copytree(src, out)
-        else:
-            out.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, out)
+    # Never copy mutable working-tree state into the scholarly archive.
+    export_git_archive(FORMAL_COMMIT, dest, FORMAL_PATHS)
 
 
 def file_manifest(base: Path) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
-    for path in sorted(p for p in base.rglob("*") if p.is_file()):
+    files = [p for p in base.rglob("*") if p.is_file() and not p.is_symlink()]
+    for path in sorted(files, key=lambda p: PurePosixPath(p.relative_to(base).as_posix()).parts):
         rel = path.relative_to(base).as_posix()
         rows.append({"path": rel, "bytes": path.stat().st_size, "sha256": sha256_file(path)})
     return rows
 
 
-def write_archive_manifest(stage: Path) -> None:
-    payload = {
+def archive_manifest_payload(stage: Path) -> dict[str, object]:
+    return {
         "protocol": "AI-CONTEXT/ARCHIVE-MANIFEST",
         "schema_version": "1.0.0",
         "software": "AI-CONTEXT",
@@ -133,12 +174,21 @@ def write_archive_manifest(stage: Path) -> None:
         },
         "files": file_manifest(stage),
     }
-    (stage / "ARCHIVE-MANIFEST.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_archive_manifest(stage: Path) -> None:
+    payload = archive_manifest_payload(stage)
+    (stage / "ARCHIVE-MANIFEST.json").write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def deterministic_zip(stage: Path, output: Path) -> None:
+    files = [p for p in stage.rglob("*") if p.is_file() and not p.is_symlink()]
+    files.sort(key=lambda p: PurePosixPath(p.relative_to(stage).as_posix()).parts)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-        for path in sorted(p for p in stage.rglob("*") if p.is_file()):
+        for path in files:
             rel = path.relative_to(stage).as_posix()
             info = zipfile.ZipInfo(rel, FIXED_ZIP_DT)
             info.compress_type = zipfile.ZIP_DEFLATED
@@ -147,159 +197,98 @@ def deterministic_zip(stage: Path, output: Path) -> None:
             zf.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
 
 
-class Rule(Flowable):
-    def __init__(self, width: float, thickness: float = 0.6):
-        super().__init__(); self.width = width; self.thickness = thickness; self.height = 4
-    def draw(self):
-        self.canv.setLineWidth(self.thickness)
-        self.canv.line(0, 2, self.width, 2)
-
-
-class ArchitectureFlow(Flowable):
-    labels = ["RAW VAULT", "IMPORT + RECEIPTS", "STAGING", "CURATION", "CANONICAL MEMORY", "ROUTING", "SELECTIVE BUNDLE"]
-    def __init__(self, width: float):
-        super().__init__(); self.width = width; self.height = 188
-    def draw(self):
-        c = self.canv
-        box_w = min(260, self.width * 0.66); box_h = 20; gap = 6
-        x = (self.width - box_w) / 2
-        y = self.height - box_h
-        centers = []
-        for label in self.labels:
-            c.roundRect(x, y, box_w, box_h, 4, stroke=1, fill=0)
-            c.setFont("Helvetica-Bold", 7.2)
-            c.drawCentredString(x + box_w / 2, y + 7.2, label)
-            centers.append((x + box_w/2, y))
-            y -= box_h + gap
-        for i in range(len(centers)-1):
-            cx, by = centers[i]
-            nx, ny = centers[i+1]
-            c.line(cx, by, nx, ny + box_h)
-        c.setFont("Helvetica-Oblique", 7)
-        c.drawString(0, 1, "Authority increases only through explicit protocol gates; relevance, storage, restore, indexes and transport do not create memory authority.")
-
-
-class EvidenceLayers(Flowable):
-    def __init__(self, width: float):
-        super().__init__(); self.width = width; self.height = 90
-    def draw(self):
-        c = self.canv
-        items = [
-            ("1", "Python executable conformance", "Reference behavior and adversarial tests"),
-            ("2", "JSON schemas", "Structural wire and record contracts"),
-            ("3", "Adversarial fixtures", "Finite failure cases and fail-closed behavior"),
-            ("4", "Lean 4", "Selected structural invariants of frozen v1.0.0"),
-        ]
-        y = self.height - 18
-        for n, title, sub in items:
-            c.circle(10, y+2, 8, stroke=1, fill=0)
-            c.setFont("Helvetica-Bold", 8); c.drawCentredString(10, y-1, n)
-            c.setFont("Helvetica-Bold", 8); c.drawString(24, y+2, title)
-            c.setFont("Helvetica", 7); c.drawString(24, y-8, sub)
-            y -= 22
-
-
 def report_styles():
-    s = getSampleStyleSheet()
-    s.add(ParagraphStyle(name="TitleX", parent=s["Title"], fontName="Helvetica-Bold", fontSize=23, leading=27, alignment=TA_LEFT, spaceAfter=8))
-    s.add(ParagraphStyle(name="SubTitle", parent=s["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#333333"), spaceAfter=16))
-    s.add(ParagraphStyle(name="H1X", parent=s["Heading1"], fontName="Helvetica-Bold", fontSize=16, leading=20, spaceBefore=8, spaceAfter=8))
-    s.add(ParagraphStyle(name="H2X", parent=s["Heading2"], fontName="Helvetica-Bold", fontSize=11.5, leading=15, spaceBefore=7, spaceAfter=5))
-    s.add(ParagraphStyle(name="BodyX", parent=s["BodyText"], fontName="Helvetica", fontSize=9.2, leading=13.2, spaceAfter=7))
-    s.add(ParagraphStyle(name="Small", parent=s["BodyText"], fontName="Helvetica", fontSize=7.6, leading=10.2, spaceAfter=5))
-    s.add(ParagraphStyle(name="CodeX", parent=s["Code"], fontName="Courier", fontSize=7.6, leading=10, leftIndent=8, rightIndent=8, backColor=colors.HexColor("#f3f3f3"), borderPadding=5, spaceAfter=7))
-    s.add(ParagraphStyle(name="Callout", parent=s["BodyText"], fontName="Helvetica-Bold", fontSize=9, leading=13, leftIndent=10, rightIndent=10, borderWidth=.5, borderPadding=7, borderColor=colors.HexColor("#777777"), spaceBefore=4, spaceAfter=9))
-    return s
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="TitleX", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=22, leading=26, alignment=TA_LEFT, spaceAfter=8))
+    styles.add(ParagraphStyle(name="SubTitle", parent=styles["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#333333"), spaceAfter=14))
+    styles.add(ParagraphStyle(name="H1X", parent=styles["Heading1"], fontName="Helvetica-Bold", fontSize=16, leading=20, spaceBefore=6, spaceAfter=7))
+    styles.add(ParagraphStyle(name="H2X", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=11.5, leading=15, spaceBefore=6, spaceAfter=4))
+    styles.add(ParagraphStyle(name="BodyX", parent=styles["BodyText"], fontName="Helvetica", fontSize=9.2, leading=13.2, spaceAfter=7))
+    styles.add(ParagraphStyle(name="Small", parent=styles["BodyText"], fontName="Helvetica", fontSize=7.7, leading=10.3, spaceAfter=5))
+    styles.add(ParagraphStyle(name="CodeX", parent=styles["Code"], fontName="Courier", fontSize=7.5, leading=9.8, leftIndent=8, rightIndent=8, backColor=colors.HexColor("#f3f3f3"), borderPadding=5, spaceAfter=7))
+    styles.add(ParagraphStyle(name="Callout", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=9, leading=13, leftIndent=10, rightIndent=10, borderWidth=.5, borderPadding=7, borderColor=colors.HexColor("#777777"), spaceBefore=4, spaceAfter=9))
+    return styles
 
 
-def _footer(canvas, doc):
+def _footer(canvas, doc) -> None:
     canvas.saveState()
     canvas.setFont("Helvetica", 7)
-    canvas.drawString(18*mm, 11*mm, "AI-CONTEXT v1.0.0 - Scholarly Overview")
-    canvas.drawRightString(A4[0]-18*mm, 11*mm, f"Page {doc.page}")
+    canvas.drawString(18 * mm, 11 * mm, "AI-CONTEXT v1.0.0 - Scholarly Overview")
+    canvas.drawRightString(A4[0] - 18 * mm, 11 * mm, f"Page {doc.page}")
     canvas.restoreState()
 
 
 def build_overview_pdf(output: Path, theorem_entries: list[dict[str, object]]) -> None:
+    """Build a deterministic six-page human-facing technical overview."""
     rl_config.invariant = 1
     styles = report_styles()
-    doc = BaseDocTemplate(str(output), pagesize=A4, leftMargin=18*mm, rightMargin=18*mm, topMargin=17*mm, bottomMargin=18*mm,
-                          title="AI-CONTEXT v1.0.0: A Vendor-Neutral Framework for Private, Portable, Governed AI Context Memory",
-                          author="Trent Slade; contributor: OpenAI ChatGPT (GPT-5.6 Sol)")
+    doc = BaseDocTemplate(
+        str(output),
+        pagesize=A4,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=17 * mm,
+        bottomMargin=18 * mm,
+        title="AI-CONTEXT v1.0.0: A Vendor-Neutral Framework for Private, Portable, Governed AI Context Memory",
+        author="Trent Slade; contributor: OpenAI ChatGPT (GPT-5.6 Sol)",
+    )
     frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="normal")
     doc.addPageTemplates(PageTemplate(id="main", frames=frame, onPage=_footer))
-    W = doc.width
+
+    def body(text: str):
+        return Paragraph(text, styles["BodyX"])
+
+    def h1(text: str):
+        return Paragraph(text, styles["H1X"])
+
     story = [
         Paragraph("AI-CONTEXT v1.0.0", styles["TitleX"]),
         Paragraph("A Vendor-Neutral Framework for Private, Portable, Governed AI Context Memory", styles["SubTitle"]),
-        Rule(W), Spacer(1, 8),
-        Paragraph(f"<b>Zenodo DOI:</b> {DOI}<br/><b>Creator:</b> Trent Slade (QSOL-IMC; ORCID 0009-0002-4515-9237)<br/><b>Contributor:</b> OpenAI ChatGPT (GPT-5.6 Sol), OpenAI<br/><b>License:</b> Apache-2.0", styles["BodyX"]),
-        Paragraph("Reference identity", styles["H2X"]),
-        Paragraph(f"Tag: <b>{REFERENCE_TAG}</b><br/>Reference commit: <font name='Courier'>{REFERENCE_COMMIT}</font><br/>Git tree: <font name='Courier'>{REFERENCE_TREE}</font><br/>Post-tag Lean integration commit: <font name='Courier'>{FORMAL_COMMIT}</font>", styles["Small"]),
-        Spacer(1, 6),
-        Paragraph("Abstract", styles["H1X"]),
-        Paragraph("AI-CONTEXT is a vendor-neutral specification and reference implementation for transforming user-controlled sources into governed canonical AI context memory. It separates raw evidence, provenance, curation authority, canonical memory, selective disclosure, encrypted persistence, portable restore, derived retrieval, interoperability and operator UX. Version 1.0.0 freezes the reference protocol and canonicalization contract, then a post-tag Lean 4 layer formalizes selected structural invariants of that immutable release. The project is designed around a simple principle: useful context and protocol authority are different things.", styles["BodyX"]),
-        Paragraph("Scope statement", styles["Callout"]),
-        Paragraph("The Lean layer proves selected authority, disclosure, lifecycle, restore, retrieval and transport invariants. It does not prove every Python/Rust implementation detail, cryptographic primitives, semantic truth, provider behavior, or universal privacy/erasure.", styles["BodyX"]),
+        body(f"<b>Zenodo DOI:</b> {DOI}<br/><b>Creator:</b> Trent Slade (QSOL-IMC; ORCID 0009-0002-4515-9237)<br/><b>Contributor:</b> OpenAI ChatGPT (GPT-5.6 Sol), OpenAI<br/><b>License:</b> Apache-2.0"),
+        h1("Abstract"),
+        body("AI-CONTEXT is a vendor-neutral specification and reference implementation for transforming user-controlled sources into governed canonical AI context memory. It separates evidence, provenance, curation authority, canonical memory, selective disclosure, persistence, restore, derived retrieval, interoperability and operator UX. Version 1.0.0 freezes the protocol and canonicalization contract; a post-tag Lean 4 layer then formalizes selected structural invariants of that immutable release."),
+        Paragraph("Lean proves selected protocol invariants. It does not prove every Python/Rust implementation detail, cryptographic primitive, semantic truth claim, provider behavior, or universal privacy/erasure.", styles["Callout"]),
+        body(f"<b>Frozen tag:</b> {REFERENCE_TAG}<br/><b>Reference commit:</b> <font name='Courier'>{REFERENCE_COMMIT}</font><br/><b>Git tree:</b> <font name='Courier'>{REFERENCE_TREE}</font><br/><b>Phase 12 integration:</b> <font name='Courier'>{FORMAL_COMMIT}</font>"),
         PageBreak(),
-        Paragraph("1. Motivation and design problem", styles["H1X"]),
-        Paragraph("Provider-side memory is convenient but typically opaque, non-portable and entangled with one service boundary. AI-CONTEXT instead treats memory as a user-governed local data system. Source material may be useful while still being wrong; a task may be relevant to context that a selected provider is not permitted to receive; encryption may protect bytes without making those bytes true; restore may reconstruct context without recreating an AI instance. The architecture therefore keeps evidence, authority and disclosure separate.", styles["BodyX"]),
-        Paragraph("Core distinctions", styles["H2X"]),
-        Paragraph("SOURCE MATERIAL != CANONICAL MEMORY\nCANDIDATE != MEMORY\nLLM SUGGESTION != REVIEW DECISION\nRELEVANT != PERMITTED\nDEPENDENCY != PERMISSION BYPASS\nROUTED BUNDLE != CANONICAL MEMORY\nENCRYPTION AT REST != MEMORY AUTHORITY\nRESTORE != MODEL IDENTITY\nINDEX HIT != MEMORY AUTHORITY\nSIGNATURE != DISCLOSURE AUTHORITY\nTUI ACTION != AUTHORITY", styles["CodeX"]),
-        Paragraph("2. Reference architecture", styles["H1X"]),
-        ArchitectureFlow(W), Spacer(1, 7),
-        Paragraph("Raw sources enter a vault and become staged observations plus receipts. Only explicit curation can apply approved candidates into canonical memory. Routing then constructs a target-specific bundle from already-authorized records. Optional encrypted persistence and restore operate below or beside these authority boundaries. Derived indexes accelerate retrieval but must return to canonical validation and routing before disclosure.", styles["BodyX"]),
+        h1("1. Motivation and architecture"),
+        body("Provider-side memory is useful but can be opaque, non-portable and tied to one service. AI-CONTEXT treats memory as a user-governed local data system. Source material can be relevant and still be false; relevant context can still be forbidden for a target; encryption can protect bytes without making them true; restore can reconstruct context without recreating a model instance."),
+        Paragraph("PRIVATE SOURCES\n  -> RAW VAULT\n  -> IMPORT + RECEIPTS\n  -> STAGING\n  -> CURATION\n  -> CANONICAL MEMORY\n  -> ROUTING\n  -> SELECTIVE BUNDLE\n  -> AI / AGENT / LOCAL MODEL / EXTERNAL PROVIDER", styles["CodeX"]),
+        h1("2. Evidence, provenance and curation"),
+        body("AI exports, repositories, documents, Drive/Takeout material and email archives become observations, source snapshots, content identities and receipts. Imported source is evidence, not canonical memory. Automated extraction and local LLM curation may propose candidates but cannot self-promote. Human or policy approval and canonical application remain separate authority events. Conflicts, supersession, verification, retention, expiry and tombstones remain explicit and receipted."),
+        h1("3. Selective disclosure"),
+        body("Routing is a read-only disclosure firewall over already-approved canonical memory. Profiles, task/tag selection, sensitivity ceilings, hard exclusions, target policy and dependency closure produce the smallest permitted bundle. Relevance and dependency never bypass permission; ambiguity fails closed."),
         PageBreak(),
-        Paragraph("3. Evidence and provenance", styles["H1X"]),
-        Paragraph("The framework supports AI export formats, local repositories, text/JSON, office documents, Drive/Takeout material and email archives. Ingested data becomes observations, source snapshots, content identities and receipts. Duplicate content may collapse computationally without destroying provenance. Source authority and claim truth remain separate.", styles["BodyX"]),
-        Paragraph("4. Curation and lifecycle", styles["H1X"]),
-        Paragraph("Candidate generation cannot self-promote. Automated semantic extraction and local LLM curation are advisory. Canonical application requires an explicit human or policy approval decision. The curation layer records conflicts, supersession, verification/confidence changes, retention, expiry and tombstones. Content correction is represented as a new record plus supersession rather than silent history rewrite.", styles["BodyX"]),
-        Paragraph("5. Selective disclosure", styles["H1X"]),
-        Paragraph("Routing is a read-only disclosure firewall over canonical memory. Profiles, task/tag selectors, sensitivity ceilings, target policies, hard exclusions and dependency closure determine the smallest permitted bundle. A dependency can bypass relevance selection only; it cannot bypass sensitivity, lifecycle, approval or target permission. Ambiguity fails closed.", styles["BodyX"]),
-        Paragraph("6. Persistence and restore", styles["H1X"]),
-        Paragraph("The optional encrypted-directory backend uses AES-256-GCM through the maintained Python cryptography package, with external key custody and resumable rotation. Storage encryption confers no epistemic or disclosure authority. Portable .aicr archives preserve either a minimum continuity set or a fuller working set. Restore means governed context reconstruction, not recreation of model identity, hidden chain of thought or provider-private memory.", styles["BodyX"]),
+        h1("4. Storage and restore"),
+        body("The optional encrypted-directory backend uses AES-256-GCM through the maintained Python cryptography package with external key custody and resumable rotation. Encryption at rest is a persistence property and grants no epistemic or disclosure authority. Portable .aicr archives preserve a minimum continuity set or fuller working set. Restore reconstructs governed context, not model identity, hidden reasoning, weights or provider-private memory."),
+        h1("5. Derived indexes"),
+        body("Deterministic vector, graph and lexical projections are private rebuildable retrieval accelerators. Source fingerprints make stale projections unusable. Index membership and search hits remain candidate retrieval only and must return through canonical validation and routing before disclosure."),
+        h1("6. Interoperability and signed receipts"),
+        body("A stabilized Python surface, independent Rust verifier, language-neutral fixtures, Ed25519 integrity receipts, capability manifests and read-only MCP/tool examples provide transport interoperability without creating a second memory authority. Signature validity proves byte integrity under a key, not disclosure permission, epistemic truth or identity trust by itself."),
+        h1("7. Operator UX"),
+        body("The dependency-free terminal UX exposes imports, review, conflicts, provenance, exact bundle previews, backup and restore while delegating authority-sensitive behavior to the established protocol. Read-only inspection does not mutate governance state. Approval and application stay separate; preview is not disclosure; a menu action is not authority."),
         PageBreak(),
-        Paragraph("7. Derived retrieval and interoperability", styles["H1X"]),
-        Paragraph("Deterministic vector, graph and lexical projections are private rebuildable retrieval accelerators. A source fingerprint makes stale projections unusable. Search hits remain candidates and must return through routing before disclosure. The interoperability layer adds a stabilized Python surface, an independent Rust verifier, language-neutral fixtures, Ed25519 integrity receipts, capability manifests and read-only tool/MCP examples. Signature validity proves byte integrity under a key, not disclosure permission, epistemic truth or identity trust by itself.", styles["BodyX"]),
-        Paragraph("8. Operator UX", styles["H1X"]),
-        Paragraph("The dependency-free terminal UX exposes imports, review, conflict inspection, provenance, exact bundle previews, backup and restore while delegating authority-sensitive work to the established protocol paths. Read-only inspection may not bootstrap or repair governance state. Approval and canonical application remain separate events. A preview is not disclosure and a menu action is not authority.", styles["BodyX"]),
-        Paragraph("9. Reproducibility evidence model", styles["H1X"]),
-        EvidenceLayers(W),
-        Paragraph("The four layers deliberately overlap without being conflated. Python and JSON schemas provide executable and structural conformance. Adversarial tests exercise finite failure modes. Lean proves selected invariants in a small reference model. None of these layers is allowed to silently upgrade the claims of the others.", styles["BodyX"]),
+        h1("8. Conformance and formal verification"),
+        body("Four evidence layers overlap without being conflated: Python executable conformance, JSON schemas, adversarial fixtures/tests and Lean 4 selected-invariant proofs. The full pre-tag release gate passed on the exact frozen main commit before v1.0.0 was created."),
+        body(f"Phase 12 is pinned to <font name='Courier'>{LEAN_TOOLCHAIN}</font>, uses Lean core plus Lake without Mathlib, and contains {len(theorem_entries)} named theorems with checked finite invalid-state examples and no sorry, admit or axiom placeholders."),
+        Paragraph("Representative formal invariants", styles["H2X"]),
+        Paragraph("<br/>".join(f"{i}. <font name='Courier'>{e['declaration']}</font>: {e['invariant']}" for i, e in enumerate(theorem_entries[:12], 1)), styles["Small"]),
+        h1("9. Formalization scope"),
+        body("The formal model covers source-to-memory authority separation, secret-shaped-content exclusion independent of sensitivity labels, curation/application boundaries, non-downgrade, disclosure permission, restore semantics, storage non-authority, stale indexes, signature/tool/capability limits, UX orchestration and migration rejection. It does not re-prove AES-GCM, Ed25519, SHA-256, Git, GitHub Actions, Python, Rust or provider implementations."),
         PageBreak(),
-        Paragraph("10. Frozen v1.0.0 identity", styles["H1X"]),
-        Paragraph(f"The immutable v1.0.0 implementation target is commit <font name='Courier'>{REFERENCE_COMMIT}</font> with Git tree <font name='Courier'>{REFERENCE_TREE}</font>. The active canonicalizer is <font name='Courier'>python-json-v0.1</font>. RFC 8785 JCS was evaluated but not adopted because a silent canonicalizer change would alter existing deterministic identifiers and hashes. The exact merged main release commit passed the complete release gate before the v1.0.0 tag was created.", styles["BodyX"]),
-        Paragraph("11. Lean 4 formalization", styles["H1X"]),
-        Paragraph(f"Phase 12 was created after the tag and integrated at commit <font name='Courier'>{FORMAL_COMMIT}</font>. It is pinned to <font name='Courier'>{LEAN_TOOLCHAIN}</font>, uses Lean core plus Lake without Mathlib, and treats v1.0.0 as an immutable theorem subject. The formalization strengthened source-to-memory separation by modeling import transitions, and secret exclusion by modeling secret-shaped content independently of declared sensitivity labels.", styles["BodyX"]),
-        Paragraph("Formal theorem inventory", styles["H2X"]),
-    ]
-    inv_rows = [["#", "Lean declaration", "Frozen invariant"]]
-    for i, e in enumerate(theorem_entries[:12], 1):
-        inv_rows.append([str(i), str(e["declaration"]), str(e["invariant"])])
-    table = Table(inv_rows, colWidths=[9*mm, 62*mm, W-71*mm], repeatRows=1, hAlign="LEFT")
-    table.setStyle(TableStyle([
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTNAME", (0,1), (-1,-1), "Helvetica"),
-        ("FONTSIZE", (0,0), (-1,-1), 6.8), ("LEADING", (0,0), (-1,-1), 8.5),
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#eaeaea")),
-        ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#aaaaaa")),
-        ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ("LEFTPADDING", (0,0), (-1,-1), 3), ("RIGHTPADDING", (0,0), (-1,-1), 3),
-        ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-    ]))
-    story += [
-        table,
-        Paragraph(f"Representative entries shown above. The machine-readable inventory contains {len(theorem_entries)} named theorems in total.", styles["Small"]),
-        Spacer(1, 9),
-        Paragraph("12. Threat model and limits", styles["H1X"]),
-        Paragraph("AI-CONTEXT is not a password manager. Credentials, private keys, recovery codes, storage keys and similar secrets are excluded from canonical memory. The release audit is a bounded claim about the exact tracked public tree, not a proof that prior Git history, developer machines, backups or every possible semantic private fact are clean. Deletion receipts are deliberately conservative and do not claim destruction of every backup or key copy. Embedded signing keys do not become identity trust anchors.", styles["BodyX"]),
-        Paragraph("13. Archival provenance", styles["H1X"]),
-        Paragraph("The Zenodo source archive is a compound scholarly source bundle. reference-v1.0.0/ is derived exactly from the immutable v1.0.0 tag. formal/ contains the later Lean formalization of that tag, together with its pinned build metadata and theorem inventory. ARCHIVE-MANIFEST.json records the identities and SHA-256 digest of every archived file. This structure explicitly avoids claiming that the Lean sources existed in the original tag.", styles["BodyX"]),
-        Paragraph("14. Reproduction", styles["H1X"]),
-        Paragraph("Reference implementation tests: <font name='Courier'>python -m unittest discover -s tests -v</font><br/>Formal layer: <font name='Courier'>lake build</font><br/>Inventory validation: <font name='Courier'>python tools/validate_formalization.py</font><br/>Phase 13 package validation: <font name='Courier'>python tools/verify_phase13_artifacts.py &lt;artifact-dir&gt;</font>", styles["BodyX"]),
-        Paragraph("15. Citation", styles["H1X"]),
+        h1("10. Threat model and limits"),
+        body("AI-CONTEXT is not a password manager. Credentials, private keys, recovery material and storage keys are excluded from canonical memory. The release audit is a bounded exact-Git-tree claim, not proof that developer machines, prior history, backups or every possible semantic private fact are clean. Deletion receipts are conservative and do not claim destruction of all copies or key material. Embedded verification keys do not become identity trust anchors."),
+        h1("11. Archival provenance"),
+        body("The Zenodo source archive is deliberately compound. reference-v1.0.0/ is exported directly from the immutable v1.0.0 commit after verifying the tag binding. formal/ is exported directly from the reviewed Phase 12 integration commit. ARCHIVE-MANIFEST.json binds those identities and hashes every archived file. The co-location of both layers does not imply the Lean sources existed in the original release tag."),
+        h1("12. Canonicalization"),
+        body("v1.0.0 retains python-json-v0.1. RFC 8785 JCS was evaluated but deliberately not adopted because a silent canonicalizer change would alter established identifiers and hashes. A future canonicalizer change requires an explicit versioned migration and new language-neutral conformance vectors."),
+        PageBreak(),
+        h1("13. Reproducibility"),
+        body("The Phase 13 builder and verifier produce and independently validate exactly three Zenodo upload files. The verifier checks archive resource ceilings, canonical paths, duplicate members, deterministic metadata, secret/private-runtime exclusions, manifest identities, file hashes, byte-for-byte reference provenance and byte-for-byte formalization provenance."),
+        Paragraph("python tools/build_phase13_artifacts.py --out /tmp/ai-context-phase13\npython tools/verify_phase13_artifacts.py /tmp/ai-context-phase13\npython -m unittest discover -s tests -v\nlake build\npython tools/validate_formalization.py", styles["CodeX"]),
+        h1("14. Citation"),
         Paragraph(f"Slade, T. (2026). <i>AI-CONTEXT v1.0.0: A Vendor-Neutral Framework for Private, Portable, Governed AI Context Memory</i> [Software]. Zenodo. https://doi.org/{DOI}", styles["Callout"]),
-        Paragraph("Contribution note", styles["H2X"]),
-        Paragraph("Creator metadata identifies Trent Slade (QSOL-IMC; ORCID 0009-0002-4515-9237). The Zenodo contributor record identifies OpenAI ChatGPT (GPT-5.6 Sol), affiliated with OpenAI, for AI-assisted architecture, implementation, review and documentation work as recorded by the project.", styles["Small"]),
+        h1("15. Contribution note"),
+        body("Creator metadata identifies Trent Slade (QSOL-IMC; ORCID 0009-0002-4515-9237). The Zenodo contributor record identifies OpenAI ChatGPT (GPT-5.6 Sol), affiliated with OpenAI, for AI-assisted architecture, implementation, review and documentation work as recorded by the project."),
     ]
     doc.build(story)
 
@@ -346,43 +335,74 @@ It does **not** claim to prove every Python/Rust implementation detail, AES-GCM,
 
 ## Reproduction
 
-From a clean checkout containing the tag and the Phase 12 formalization:
+From a clean checkout containing the tag and Phase 12 commit:
 
 ```bash
 python tools/build_phase13_artifacts.py --out /tmp/ai-context-phase13
 python tools/verify_phase13_artifacts.py /tmp/ai-context-phase13
 ```
 
-The archival source ZIP is designed for two independent reproductions:
-
-```bash
-# frozen v1.0.0 reference tree
-cd reference-v1.0.0
-python -m unittest discover -s tests -v
-
-# post-tag formalization of that frozen tree
-cd ../formal
-lake build
-python tools/validate_formalization.py
-```
+The builder exports both reference and formalization bytes from their bound Git commits rather than mutable working-tree state. The source archive can then be extracted and its two components reproduced independently.
 
 ## Provenance rule
 
-`reference-v1.0.0/` is derived from the immutable Git tag. `formal/` is a later scholarly layer bound to that tag. Their co-location in the archival ZIP is not a claim that the Lean files existed in the original release tag.
+`reference-v1.0.0/` is exported from `{REFERENCE_COMMIT}` after verifying the `v1.0.0` tag binding. `formal/` is exported from `{FORMAL_COMMIT}`. Their co-location in the archival ZIP is not a claim that the Lean files existed in the original release tag.
 """
     output.write_text(existing + appendix + "\n", encoding="utf-8")
+
+
+def _has_symlink_component(path: Path) -> bool:
+    candidate = path.absolute()
+    parts = candidate.parts
+    current = Path(parts[0])
+    for part in parts[1:]:
+        current = current / part
+        if current.exists() or current.is_symlink():
+            if current.is_symlink():
+                return True
+        else:
+            break
+    return False
+
+
+def prepare_output_dir(raw_out: Path, replace: bool) -> Path:
+    out = raw_out.expanduser().absolute()
+    if _has_symlink_component(out):
+        raise RuntimeError("output path may not contain symlink components")
+    resolved = out.resolve(strict=False)
+    root = ROOT.resolve()
+    unsafe = {Path("/").resolve(), Path.home().resolve(), root}
+    if resolved in unsafe or resolved in root.parents:
+        raise RuntimeError(f"unsafe archival output path: {out}")
+    if out.exists():
+        if not out.is_dir() or out.is_symlink():
+            raise RuntimeError("existing output path must be a real directory")
+        if not replace:
+            raise RuntimeError("output directory already exists; pass --yes to replace prior archival artifacts")
+        entries = list(out.iterdir())
+        for entry in entries:
+            if entry.name not in EXPECTED_ARTIFACTS or entry.is_symlink() or not entry.is_file():
+                raise RuntimeError("refusing to replace a non-dedicated output directory")
+        for entry in entries:
+            entry.unlink()
+    else:
+        out.mkdir(parents=True)
+    return out
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--yes", action="store_true", help="replace an existing dedicated three-file artifact directory")
     args = ap.parse_args()
-    out = args.out.resolve()
-    if out.exists(): shutil.rmtree(out)
-    out.mkdir(parents=True)
+    out = prepare_output_dir(args.out, args.yes)
     assert_git_bindings()
-    inventory = json.loads((ROOT / "formal" / "theorem-inventory.json").read_text(encoding="utf-8"))
+
+    # Read theorem metadata from the reviewed Phase 12 commit, not the mutable worktree.
+    inventory_text = run("git", "show", f"{FORMAL_COMMIT}:formal/theorem-inventory.json")
+    inventory = json.loads(inventory_text)
     theorem_entries = inventory["theorems"]
+
     pdf = out / OVERVIEW_PDF
     build_overview_pdf(pdf, theorem_entries)
     with tempfile.TemporaryDirectory(prefix="ai-context-phase13-") as td:
@@ -391,11 +411,21 @@ def main() -> int:
         export_formal_layer(stage / "formal")
         write_archive_manifest(stage)
         deterministic_zip(stage, out / SOURCE_ZIP)
+
     source_hash = sha256_file(out / SOURCE_ZIP)
     pdf_hash = sha256_file(pdf)
     build_release_notes(out / RELEASE_NOTES, source_hash, pdf_hash, len(theorem_entries))
-    print(json.dumps({"status":"ok","doi":DOI,"artifacts":{SOURCE_ZIP:source_hash,OVERVIEW_PDF:pdf_hash,RELEASE_NOTES:sha256_file(out / RELEASE_NOTES)}}, indent=2, sort_keys=True))
+    print(json.dumps({
+        "status": "ok",
+        "doi": DOI,
+        "artifacts": {
+            SOURCE_ZIP: source_hash,
+            OVERVIEW_PDF: pdf_hash,
+            RELEASE_NOTES: sha256_file(out / RELEASE_NOTES),
+        },
+    }, indent=2, sort_keys=True))
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
