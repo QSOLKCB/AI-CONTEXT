@@ -1,0 +1,38 @@
+{
+  "protocol": "AI-CONTEXT/MCP-EXAMPLE",
+  "schema_version": "0.1.0",
+  "authority": "transport-example-only",
+  "tools": [
+    {
+      "name": "ai_context_capabilities",
+      "description": "Return the AI-CONTEXT implementation capability manifest.",
+      "read_only": true,
+      "command": ["python3", "tools/interop.py", "capabilities"]
+    },
+    {
+      "name": "ai_context_search_candidates",
+      "description": "Return candidate memory IDs from a validated fresh lexical index. Results still require Phase 6 routing before disclosure.",
+      "read_only": true,
+      "command_template": ["python3", "tools/indexes.py", "search", "{workspace}", "{query}", "--limit", "{limit}"],
+      "authority": "candidate-retrieval-only"
+    },
+    {
+      "name": "ai_context_validate_bundle",
+      "description": "Recompute and validate an existing routed bundle against current workspace state.",
+      "read_only": true,
+      "command_template": ["python3", "tools/validate_routing.py", "{workspace}", "--bundle", "{bundle}"]
+    },
+    {
+      "name": "ai_context_verify_signed_bundle",
+      "description": "Verify exact bundle bytes and an Ed25519 integrity receipt. Signature validity grants no disclosure or epistemic authority.",
+      "read_only": true,
+      "command_template": ["python3", "tools/interop.py", "verify-receipt", "{bundle}", "{receipt}"]
+    }
+  ],
+  "forbidden_direct_authority_examples": [
+    "canonical-memory-write",
+    "candidate-approval",
+    "routing-policy-bypass",
+    "sensitivity-downgrade"
+  ]
+}
