@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/storage-rotation.schema.json",
+  "title": "AI-CONTEXT Storage Rotation Journal",
+  "type": "object",
+  "required": ["protocol", "schema_version", "store_id", "from_key_id", "to_key_id", "started_at", "object_path_hashes"],
+  "properties": {
+    "protocol": {"const": "AI-CONTEXT/STORAGE-ROTATION"},
+    "schema_version": {"const": "0.1.0"},
+    "store_id": {"type": "string", "pattern": "^store\\.[0-9a-f]{32}$"},
+    "from_key_id": {"type": "string", "pattern": "^key\\.sha256:[0-9a-f]{64}$"},
+    "to_key_id": {"type": "string", "pattern": "^key\\.sha256:[0-9a-f]{64}$"},
+    "started_at": {"type": "string", "format": "date-time"},
+    "object_path_hashes": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}
