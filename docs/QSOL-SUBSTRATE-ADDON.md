@@ -14,11 +14,14 @@ AI-CONTEXT is the private-memory framework. It owns the authority path from user
 private sources
   -> staging/evidence
   -> candidate
-  -> review
+  -> explicit review
+  -> explicit application
   -> canonical memory
   -> routing
   -> selective bundle
 ```
+
+Review and application are deliberately separate authority events. An approval by itself does not append canonical memory.
 
 ### QSOL-SUBSTRATE
 
@@ -39,7 +42,7 @@ The safe relationship is:
 ```text
 AI-CONTEXT canonical memory
         |
-        | Phase 6 routing
+        | Phase 6 routing for the actual consumer
         v
 private task-scoped AI-CONTEXT bundle
 
@@ -59,6 +62,8 @@ QSOL-SUBSTRATE != AI-CONTEXT CANONICAL MEMORY
 PUBLIC SUBSTRATE FACT != PRIVATE MEMORY RECORD
 SUBSTRATE RETRIEVAL HIT != AI-CONTEXT DISCLOSURE PERMISSION
 SUBSTRATE ADAPTER != MEMORY AUTHORITY
+REVIEW APPROVAL != CANONICAL APPLICATION
+LOCAL TARGET != EXTERNAL PROVIDER TARGET
 ```
 
 Neither repository silently promotes records into the other.
@@ -69,11 +74,11 @@ Use this when you simply want portable private context memory for a model or age
 
 ```text
 AI-CONTEXT
-  -> selective routed bundle
-  -> model / agent / local runtime / provider
+  -> selective routed bundle for a named target
+  -> matching consumer
 ```
 
-Typical flow:
+Typical local-model flow:
 
 ```bash
 python3 tools/ai_context.py init ~/my-ai-context
@@ -84,12 +89,23 @@ python3 tools/ai_context.py bundle \
   --profile general \
   --target local-default \
   --task "continue my project" \
-  --output /tmp/private-context.json
+  --output /tmp/private-context-local.json
 ```
 
-Deliver `/tmp/private-context.json` to the target runtime using whatever transport that runtime supports.
+`local-default` is for the matching local consumer. Its default policy can permit private records, so do not forward that bundle to an external provider.
 
-No QSOL-SUBSTRATE checkout is required.
+For an external provider, route again using the provider target:
+
+```bash
+python3 tools/ai_context.py bundle \
+  ~/my-ai-context \
+  --profile general \
+  --target provider-default \
+  --task "continue my project" \
+  --output /tmp/private-context-provider.json
+```
+
+Deliver only the bundle built for the consumer that will actually receive it. No QSOL-SUBSTRATE checkout is required.
 
 ## Pattern B: AI-CONTEXT plus QSOL-SUBSTRATE
 
@@ -102,9 +118,9 @@ git clone https://github.com/QSOLKCB/AI-CONTEXT.git
 git clone https://github.com/QSOLKCB/QSOL-SUBSTRATE.git
 ```
 
-### Step 1: build the private task bundle
+### Step 1: build the private task bundle for the actual consumer
 
-From AI-CONTEXT:
+For a local model, from AI-CONTEXT:
 
 ```bash
 python3 tools/ai_context.py bundle \
@@ -112,7 +128,18 @@ python3 tools/ai_context.py bundle \
   --profile general \
   --target local-default \
   --task "work on a QSOL-related task" \
-  --output /tmp/private-ai-context.json
+  --output /tmp/private-ai-context-local.json
+```
+
+If the consumer is an external provider, do not reuse that local bundle. Build a provider-targeted bundle instead:
+
+```bash
+python3 tools/ai_context.py bundle \
+  ~/my-ai-context \
+  --profile general \
+  --target provider-default \
+  --task "work on a QSOL-related task" \
+  --output /tmp/private-ai-context-provider.json
 ```
 
 ### Step 2: choose the public QSOL-SUBSTRATE delivery form
@@ -154,11 +181,12 @@ python tools/build_vectors.py \
 Conceptually:
 
 ```text
-private-ai-context.json       public QSOL substrate payload
-          |                              |
-          +--------------+---------------+
-                         v
-                    model / agent
+AI-CONTEXT bundle built             public QSOL substrate payload
+for this exact consumer                        |
+          |                                     |
+          +----------------+--------------------+
+                           v
+                      model / agent
 ```
 
 Keep their provenance labels intact.
@@ -171,7 +199,7 @@ There is currently no documented command that automatically imports an arbitrary
 
 That omission is intentional. The repositories have different roles and authority boundaries.
 
-If a future bridge is added, it should remain an explicit projection/transport layer and must not allow a downstream substrate to mutate AI-CONTEXT canonical memory or bypass Phase 6 routing.
+If a future bridge is added, it should remain an explicit projection/transport layer and must not allow a downstream substrate to mutate AI-CONTEXT canonical memory, collapse review into application, or bypass Phase 6 routing for the actual consumer.
 
 ## For non-QSOL users
 
