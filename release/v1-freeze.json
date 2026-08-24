@@ -1,0 +1,44 @@
+{
+  "protocol": "AI-CONTEXT/V1-FREEZE",
+  "schema_version": "0.1.0",
+  "release": "v1.0.0",
+  "reference_protocol_version": "0.1.0",
+  "freeze_scope": {
+    "protocol_names": "all public AI-CONTEXT/* protocol names present in the v1.0.0 tagged reference tree",
+    "schemas": "all tracked spec/*.schema.json files present in the v1.0.0 tagged reference tree",
+    "canonical_invariants": "AGENTS.md and normative phase security gates present in the v1.0.0 tagged reference tree",
+    "migration_rules": "explicit versioned migration only; unknown majors reject; extensions remain non-authoritative"
+  },
+  "canonicalization": {
+    "active": "python-json-v0.1",
+    "decision": "retain-for-v1.0.0",
+    "rfc8785_jcs": "evaluated-not-adopted",
+    "future_change_policy": "requires an explicitly versioned migration plus new language-neutral conformance vectors"
+  },
+  "authority_invariants": [
+    "SOURCE_MATERIAL != CANONICAL_MEMORY",
+    "CANDIDATE != MEMORY",
+    "LLM_SUGGESTION != REVIEW_DECISION",
+    "RELEVANT != PERMITTED",
+    "DEPENDENCY != PERMISSION_BYPASS",
+    "ENCRYPTION_AT_REST != MEMORY_AUTHORITY",
+    "RESTORE != MODEL_IDENTITY",
+    "INDEX_HIT != MEMORY_AUTHORITY",
+    "SIGNATURE != DISCLOSURE_AUTHORITY",
+    "SIGNATURE != EPISTEMIC_AUTHORITY",
+    "CAPABILITY_CLAIM != PERMISSION",
+    "MCP_TOOL != MEMORY_AUTHORITY",
+    "TUI_ACTION != AUTHORITY",
+    "PREVIEW != DISCLOSURE",
+    "INSPECTOR != MUTATION"
+  ],
+  "release_tree_audit": {
+    "required": true,
+    "protocol": "AI-CONTEXT/RELEASE-AUDIT",
+    "scope": "tracked-public-git-tree"
+  },
+  "tag_binding": {
+    "tag": "v1.0.0",
+    "commit_rule": "the final immutable formalization target is the commit resolved by the v1.0.0 tag after release-candidate merge and exact-main CI success"
+  }
+}
