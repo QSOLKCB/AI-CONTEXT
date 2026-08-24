@@ -70,6 +70,7 @@ jobs:
           tests/test_release_candidate.py
           tests/test_phase12_formalization.py
           tests/test_phase13_archive.py
+          tests/test_phase13_codex_hardening.py
       - name: Unit, security, schema, provider-drift, evidence, curation, routing, storage, restore, index, interoperability, UX, release-candidate, formalization, and archival tests
         run: python -m unittest discover -s tests -v
       - name: Validate language-neutral interoperability fixture in Python
@@ -103,14 +104,21 @@ jobs:
       - name: Reproduce frozen reference and formalization from source ZIP
         run: |
           rm -rf /tmp/ai-context-phase13-repro
-          mkdir -p /tmp/ai-context-phase13-repro
           python - <<'PY'
-          import zipfile
-          with zipfile.ZipFile('/tmp/ai-context-phase13/AI-CONTEXT-1.0.0-source.zip') as zf:
-              zf.extractall('/tmp/ai-context-phase13-repro')
+          from pathlib import Path
+          from tools.verify_phase13_artifacts import extract_verified_source
+          extract_verified_source(
+              Path('/tmp/ai-context-phase13/AI-CONTEXT-1.0.0-source.zip'),
+              Path('/tmp/ai-context-phase13-repro'),
+          )
           PY
           (
             cd /tmp/ai-context-phase13-repro/reference-v1.0.0
+            git init -q
+            git config user.name "AI-CONTEXT archival reproduction"
+            git config user.email "archive-reproduction@example.invalid"
+            git add -f -A
+            git commit -q -m "Reconstitute archived v1.0.0 tree for Git-dependent tests"
             python -m unittest discover -s tests -v
           )
           (
