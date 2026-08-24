@@ -41,6 +41,7 @@ jobs:
           tools/indexes_legacy.py
           tools/indexes.py
           tools/interop.py
+          tools/ux.py
           tests/test_ai_context.py
           tests/test_phase2_conformance.py
           tests/test_schema_conformance.py
@@ -55,7 +56,8 @@ jobs:
           tests/test_phase9_codex_hardening.py
           tests/test_phase10_interop.py
           tests/test_phase10_codex_hardening.py
-      - name: Unit, security, schema, provider-drift, evidence, curation, routing, storage, restore, index, and interoperability tests
+          tests/test_phase11_ux.py
+      - name: Unit, security, schema, provider-drift, evidence, curation, routing, storage, restore, index, interoperability, and UX tests
         run: python -m unittest discover -s tests -v
       - name: Validate language-neutral interoperability fixture in Python
         run: >-
