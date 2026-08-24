@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/migration-manifest.schema.json",
+  "title": "AI-CONTEXT Migration Manifest",
+  "type": "object",
+  "required": [
+    "id",
+    "protocol",
+    "schema_version",
+    "source_workspace_version",
+    "target_workspace_version",
+    "compatibility",
+    "unknown_major_policy",
+    "additive_metadata_policy",
+    "transformations"
+  ],
+  "properties": {
+    "id": {"type": "string", "pattern": "^migration\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/MIGRATION-MANIFEST"},
+    "schema_version": {"const": "0.1.0"},
+    "source_workspace_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "target_workspace_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "compatibility": {"enum": ["exact", "additive_metadata_only"]},
+    "unknown_major_policy": {"const": "reject"},
+    "additive_metadata_policy": {"const": "extensions_only_non_authoritative"},
+    "transformations": {"type": "array", "maxItems": 0},
+    "extensions": {
+      "type": "object",
+      "description": "Opaque additive metadata with no authority over payload bytes or migration behavior."
+    }
+  },
+  "additionalProperties": false
+}
