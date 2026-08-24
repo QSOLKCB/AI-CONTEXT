@@ -1,8 +1,11 @@
+import json
 import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS = ROOT / "tools"
@@ -71,13 +74,26 @@ class ReleaseAuditUnitTests(unittest.TestCase):
 
 
 class ReleaseCandidateCurrentTreeTests(unittest.TestCase):
-    def test_current_tracked_public_tree_passes_release_audit(self):
+    def test_current_tracked_public_tree_passes_release_audit_and_schema(self):
         receipt = release_audit.audit_repository(ROOT)
         if receipt["status"] != "ok":
             self.fail(f"release audit findings: {receipt['findings']}")
         self.assertEqual(receipt["audit_scope"], "tracked-public-git-tree")
         self.assertGreater(receipt["tracked_files"], 0)
         self.assertRegex(receipt["tracked_tree_sha256"], r"^[0-9a-f]{64}$")
+
+        schema = json.loads((ROOT / "spec" / "release-audit.schema.json").read_text(encoding="utf-8"))
+        Draft202012Validator.check_schema(schema)
+        self.assertEqual(list(Draft202012Validator(schema).iter_errors(receipt)), [])
+
+    def test_v1_freeze_declaration_retains_reference_canonicalizer(self):
+        value = json.loads((ROOT / "release" / "v1-freeze.json").read_text(encoding="utf-8"))
+        self.assertEqual(value["protocol"], "AI-CONTEXT/V1-FREEZE")
+        self.assertEqual(value["release"], "v1.0.0")
+        self.assertEqual(value["reference_protocol_version"], "0.1.0")
+        self.assertEqual(value["canonicalization"]["active"], "python-json-v0.1")
+        self.assertEqual(value["canonicalization"]["rfc8785_jcs"], "evaluated-not-adopted")
+        self.assertTrue(value["release_tree_audit"]["required"])
 
 
 if __name__ == "__main__":
