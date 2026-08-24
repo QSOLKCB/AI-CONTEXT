@@ -151,7 +151,7 @@ class Phase9CodexHardeningTests(unittest.TestCase):
             return summary, values
 
         with mock.patch.object(indexes, "_validate_index_snapshot", side_effect=validate_then_tamper):
-            result = indexes.search_cache(self.workspace, "validated snapshot alpha")
+            result = indexes.search_cache(self.workspace, "validated-snapshot-alpha")
 
         self.assertIn(memory_id, {row["memory_id"] for row in result["results"]})
         self.assertEqual(result["authority"], "candidate-retrieval-only")
