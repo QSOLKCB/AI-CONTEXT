@@ -44,6 +44,7 @@ jobs:
           tools/ux_legacy.py
           tools/ux.py
           tools/release_audit.py
+          tools/validate_formalization.py
           tests/test_ai_context.py
           tests/test_phase2_conformance.py
           tests/test_schema_conformance.py
@@ -61,7 +62,8 @@ jobs:
           tests/test_phase11_ux.py
           tests/test_phase11_codex_hardening.py
           tests/test_release_candidate.py
-      - name: Unit, security, schema, provider-drift, evidence, curation, routing, storage, restore, index, interoperability, UX, and release-candidate tests
+          tests/test_phase12_formalization.py
+      - name: Unit, security, schema, provider-drift, evidence, curation, routing, storage, restore, index, interoperability, UX, release-candidate, and formalization tests
         run: python -m unittest discover -s tests -v
       - name: Validate language-neutral interoperability fixture in Python
         run: >-
@@ -81,3 +83,9 @@ jobs:
         run: >-
           python tools/release_audit.py .
           --receipt /tmp/ai-context-release-audit.json
+      - name: Validate formalization inventory
+        run: python tools/validate_formalization.py
+      - name: Install elan
+        run: curl https://elan.lean-lang.org/elan-init.sh -sSf | sh -s -- -y --default-toolchain none
+      - name: Build Lean 4 formalization
+        run: ~/.elan/bin/lake build
