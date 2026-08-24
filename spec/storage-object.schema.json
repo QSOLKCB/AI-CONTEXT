@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/storage-object.schema.json",
+  "title": "AI-CONTEXT Encrypted Storage Object",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "algorithm", "store_id", "key_id", "path_sha256", "nonce_b64", "ciphertext_b64", "ciphertext_sha256"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^storage-object\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/ENCRYPTED-OBJECT"},
+    "schema_version": {"const": "0.1.0"},
+    "algorithm": {"const": "AES-256-GCM"},
+    "store_id": {"type": "string", "pattern": "^store\\.[0-9a-f]{32}$"},
+    "key_id": {"type": "string", "pattern": "^key\\.sha256:[0-9a-f]{64}$"},
+    "path_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nonce_b64": {"type": "string", "minLength": 16},
+    "ciphertext_b64": {"type": "string", "minLength": 24},
+    "ciphertext_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "additionalProperties": false
+}

@@ -112,17 +112,19 @@ Routing is a read-only projection over canonical memory. Task selection and depe
 
 ## Phase 7 — Encrypted storage boundary
 
-- [ ] Storage-backend interface.
+- [x] Storage-backend interface.
 - [x] Document that encryption-at-rest is a storage-backend responsibility in the initial implementation.
-- [ ] Document comparative threat assumptions for filesystem encryption, age, encrypted SQLite, and hardware-backed stores.
-- [ ] Reference encrypted backend using a maintained cryptographic library.
-- [ ] Key rotation metadata.
-- [ ] Cryptographic erasure/deletion receipt strategy.
-- [ ] Recovery-key guidance that does not place keys inside AI-CONTEXT memory.
+- [x] Document comparative threat assumptions for filesystem encryption, age, encrypted SQLite, and hardware-backed stores.
+- [x] Reference encrypted backend using a maintained cryptographic library.
+- [x] Key rotation metadata.
+- [x] Cryptographic erasure/deletion receipt strategy.
+- [x] Recovery-key guidance that does not place keys inside AI-CONTEXT memory.
+
+**Phase 7 complete.** `tools/storage.py` defines a storage-backend protocol plus plaintext filesystem and encrypted-directory implementations. The encrypted reference backend uses AES-256-GCM from the maintained `cryptography` package, stores only non-secret SHA-256-derived key identifiers, keeps key files outside the store, authenticates protocol/algorithm/key/path metadata as AEAD associated data, and hides plaintext logical paths inside ciphertext. Rotation is journalled and normal access fails closed while a rotation is incomplete; object envelopes carry their actual key id so interrupted rotations can resume using the old and new external keys. The storage manifest records active/retired key history and replacement relationships. Primary ciphertext deletion emits a conservative receipt that explicitly does not claim key destruction; optional key-destruction receipts are labelled self-attested external actions rather than cryptographic proof. `docs/STORAGE.md` and `docs/ENCRYPTION-THREAT-MODELS.md` document filesystem/full-disk encryption, age, encrypted SQLite, hardware-backed custody, recovery guidance, metadata leakage, live-process limits, backup semantics, and cryptographic-erasure boundaries.
 
 ### Encryption gate
 
-Do not invent custom cryptography. The protocol may define envelopes and key identifiers, but encryption implementations must use maintained, reviewed primitives/libraries.
+Do not invent custom cryptography. The protocol may define envelopes and key identifiers, but encryption implementations must use maintained, reviewed primitives/libraries. Keys and recovery material remain external capabilities and never become AI-CONTEXT canonical memory, curation state, routing data, storage metadata, or public fixtures.
 
 ## Phase 8 — Restore and migration
 

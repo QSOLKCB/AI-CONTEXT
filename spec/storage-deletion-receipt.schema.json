@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/storage-deletion-receipt.schema.json",
+  "title": "AI-CONTEXT Storage Deletion Receipt",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "store_id", "object_id", "path_sha256", "key_id", "ciphertext_sha256", "deletion_mode", "erasure_claim", "reason", "deleted_at"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^storage-delete\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/STORAGE-DELETION"},
+    "schema_version": {"const": "0.1.0"},
+    "store_id": {"type": "string", "pattern": "^store\\.[0-9a-f]{32}$"},
+    "object_id": {"type": "string", "pattern": "^storage-object\\.sha256:[0-9a-f]{64}$"},
+    "path_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "key_id": {"type": "string", "pattern": "^key\\.sha256:[0-9a-f]{64}$"},
+    "ciphertext_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "deletion_mode": {"const": "primary-ciphertext-removal"},
+    "erasure_claim": {"const": "primary-store-ciphertext-removed-key-destruction-not-claimed"},
+    "reason": {"type": "string", "minLength": 1},
+    "deleted_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}

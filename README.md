@@ -32,6 +32,11 @@ Private sources
 [ SELECTIVE BUNDLE ]     smallest permitted context for the current task and consumer
   v
 AI / agent / local model / external provider / downstream substrate
+
+storage boundary (optional)
+  plaintext filesystem backend
+        or
+  encrypted directory backend + external key custody
 ```
 
 Core boundaries:
@@ -43,22 +48,24 @@ LLM SUGGESTION != REVIEW DECISION
 RELEVANT != PERMITTED
 DEPENDENCY != PERMISSION BYPASS
 ROUTED BUNDLE != CANONICAL MEMORY
+ENCRYPTION AT REST != MEMORY AUTHORITY
+KEY ID != KEY MATERIAL
 RESTORED CONTEXT != ORIGINAL MODEL INSTANCE
 ```
 
-A prior AI response may contain hallucinations. A repository may be stale. An email can repeat a false claim. A task may be relevant to material that the selected provider is not allowed to receive. AI-CONTEXT therefore preserves evidence, authority, curation, and disclosure as separate layers rather than flattening everything into one retrieval store.
+A prior AI response may contain hallucinations. A repository may be stale. An email can repeat a false claim. A task may be relevant to material that the selected provider is not allowed to receive. Encryption can protect persisted bytes while doing nothing to make those bytes true or authorized. AI-CONTEXT therefore keeps evidence, authority, curation, disclosure, and storage as distinct layers.
 
 ## Design goals
 
 - **Private by default.** Raw exports, evidence state, curation state, routing policy, and generated bundles live in the private workspace and are ignored by Git by default.
 - **User-owned.** The source of truth is the user's store, not provider-side memory.
 - **Portable.** Core artifacts use UTF-8 JSON/JSONL plus deterministic hashes and receipts.
-- **Vendor-neutral.** Provider export formats and model runtimes are replaceable inputs/consumers, not authorities.
+- **Vendor-neutral.** Provider export formats, model runtimes, and storage backends are replaceable edges, not authorities.
 - **Provenance-preserving.** Canonical memory can trace back to observations, import receipts, source snapshots, and content identities.
 - **Typed memory.** Facts, preferences, project state, claims, hypotheses, instructions, relationships, publications, events, environment state, and provenance policy remain distinct classes.
 - **Human/policy curation authority.** Automated extractors and local LLMs may propose. They may not self-promote.
 - **Selective disclosure.** Build the smallest permitted task bundle rather than giving every model the complete private store.
-- **Fail closed.** Unknown formats, ambiguous dependency references, blocked required context, malformed lifecycle state, and policy conflicts are rejected rather than guessed through.
+- **Fail closed.** Unknown formats, ambiguous dependencies, blocked required context, malformed authority state, interrupted key rotation, and policy conflicts are rejected rather than guessed through.
 - **Deterministic where practical.** Identical memory, profile, routing policy, target, task, and selectors produce identical routed bundle bytes under the declared canonicalizer.
 - **Restorable, not mystical.** Restore reconstructs curated context. It does not recreate hidden provider state, a model identity, or private chain of thought.
 
@@ -72,7 +79,7 @@ Original exports and source files. Treat as highly sensitive input. AI-CONTEXT n
 
 Parsed observations, import receipts, deterministic source snapshots, content-addressed text/binary references, and duplicate-provenance indexes. This layer is evidence, not memory.
 
-Phase 4 documentation:
+See:
 
 - [`docs/SOURCE-EVIDENCE.md`](docs/SOURCE-EVIDENCE.md)
 - [`docs/GOOGLE-DRIVE-EXPORTS.md`](docs/GOOGLE-DRIVE-EXPORTS.md)
@@ -80,7 +87,7 @@ Phase 4 documentation:
 
 ### 3. Curation
 
-Pending candidate records, human/policy review decisions, advisory local-LLM suggestions, conflict records, application receipts, confidence/verification mutations, supersession edges, retention policy, and tombstone receipts.
+Pending candidates, human/policy review decisions, advisory local-LLM suggestions, conflicts, application receipts, verification/confidence mutations, supersession edges, retention policy, and tombstone receipts.
 
 See [`docs/CURATION.md`](docs/CURATION.md).
 
@@ -94,84 +101,49 @@ A deterministic task-scoped projection over canonical memory. The router decides
 
 See [`docs/ROUTING.md`](docs/ROUTING.md).
 
-## Source adapters
+### 6. Storage boundary
 
-Provider export formats are inputs, not stable APIs. Phase 3 separates the stable AI-CONTEXT observation/receipt contract from higher-churn provider parsing.
+A storage backend changes how logical artifact bytes are persisted. It never grants epistemic, curation, or disclosure authority.
+
+Phase 7 provides:
+
+- a plaintext `FilesystemBackend` implementing the storage contract;
+- an `EncryptedDirectoryBackend` using AES-256-GCM from the maintained `cryptography` package;
+- external key-file custody;
+- key rotation metadata and resumable rotation journal;
+- conservative ciphertext deletion receipts;
+- explicit external key-destruction attestations.
+
+See [`docs/STORAGE.md`](docs/STORAGE.md) and [`docs/ENCRYPTION-THREAT-MODELS.md`](docs/ENCRYPTION-THREAT-MODELS.md).
+
+## Source adapters
 
 ### Core import adapters
 
-`tools/ai_context.py` retains dependency-light Phase 1 imports for:
-
-- ChatGPT conversation exports;
-- Claude conversation exports;
-- generic JSON and JSONL;
-- Markdown and plain text;
-- local Git/source trees.
+`tools/ai_context.py` retains dependency-light imports for ChatGPT, Claude, generic JSON/JSONL, Markdown/text, and local Git/source trees.
 
 ### Higher-churn provider adapters
 
-`tools/provider_import.py` supports:
+`tools/provider_import.py` supports Gemini Takeout/My Activity, Grok account exports, browser-chat archives, and data-only community mappings.
 
 ```bash
-# Google Takeout -> My Activity -> Gemini Apps
-python3 tools/provider_import.py \
-  ~/my-ai-context \
-  ~/Downloads/MyActivity.json \
-  --adapter gemini
-
-# xAI/Grok account export
-python3 tools/provider_import.py \
-  ~/my-ai-context \
-  ~/Downloads/prod-grok-backend.json \
-  --adapter grok
-
-# Browser-saved or third-party HTML/text chat archives
-python3 tools/provider_import.py \
-  ~/my-ai-context \
-  ~/Downloads/chat-export.html \
-  --adapter browser-chat
+python3 tools/provider_import.py ~/my-ai-context ~/Downloads/MyActivity.json --adapter gemini
+python3 tools/provider_import.py ~/my-ai-context ~/Downloads/prod-grok-backend.json --adapter grok
+python3 tools/provider_import.py ~/my-ai-context ~/Downloads/chat-export.html --adapter browser-chat
 ```
 
-Every provider receipt separates:
+Every provider receipt separates adapter identity/version, observed layout, and parse status. Provider-private reasoning-like fields are not silently promoted into ordinary observations.
 
-```text
-adapter.id
-adapter.version
-adapter_layout
-parse_status
-```
-
-Provider format notes and synthetic drift fixtures live under `docs/providers/` and `fixtures/provider-drift/`.
-
-### Community adapter plugins
-
-Phase 3 also defines a data-only JSON mapping plugin interface:
-
-```bash
-python3 tools/provider_import.py \
-  ~/my-ai-context \
-  export.json \
-  --adapter plugin \
-  --plugin my-adapter.json
-```
-
-Plugins map fields with constrained JSON descriptors. They do not execute provider code, Python hooks, shells, package installers, or arbitrary expressions.
+Provider notes and drift fixtures live under `docs/providers/` and `fixtures/provider-drift/`.
 
 ## Phase 4 evidence ingestion
 
 Use `tools/evidence_import.py` when repository/document provenance matters beyond the older generic import path:
 
 ```bash
-# Git/source tree with snapshot identity and line-addressed chunks
 python3 tools/evidence_import.py ~/my-ai-context ~/src/project --adapter repo
-
-# Document tree or standalone text/OOXML/PDF reference
 python3 tools/evidence_import.py ~/my-ai-context ~/Documents/research --adapter document
-
-# Google Drive / Takeout export
 python3 tools/evidence_import.py ~/my-ai-context ~/Downloads/Takeout --adapter drive-export
-
-# EML / MBOX / email export directory
 python3 tools/evidence_import.py ~/my-ai-context ~/Downloads/mail.mbox --adapter email
 ```
 
@@ -182,17 +154,14 @@ Phase 4 keeps duplicate content collapsed without destroying independent provena
 The public legacy `promote` command is disabled. New canonical memory uses the governed curation path:
 
 ```bash
-# Create a pending candidate from staged evidence
 python3 tools/curation.py propose \
   ~/my-ai-context \
   --observation obs.sha256:... \
   --record-type project_state \
   --semantic-key project:alpha
 
-# Inspect pending candidates
 python3 tools/curation.py queue ~/my-ai-context
 
-# Approve with explicit human or policy authority
 python3 tools/curation.py review \
   ~/my-ai-context \
   --candidate candidate.sha256:... \
@@ -200,31 +169,21 @@ python3 tools/curation.py review \
   --actor-type human \
   --actor-label local-user
 
-# Apply the reviewed candidate to canonical memory
 python3 tools/curation.py apply \
   ~/my-ai-context \
   --candidate candidate.sha256:...
 ```
 
-A local LLM can receive/import curator envelopes, but even an LLM recommendation of `approve` is advisory only. Canonical application still requires a separate human/policy review decision.
-
-Other Phase 5 commands cover conflicts, supersession, verification/confidence updates, retention, tombstones, and `explain` provenance tracing.
+A local LLM can produce advisory curator envelopes, but even an LLM recommendation of `approve` cannot authorize canonical application.
 
 ## Phase 6 selective disclosure and routing
 
-Fresh workspaces receive:
+Fresh workspaces receive `profiles/general.json` and private `routing/policy.json`.
 
-```text
-profiles/general.json
-routing/policy.json
-```
+Default targets:
 
-The default routing policy separates:
-
-- `local-default`: local-model target with a `private` ceiling;
-- `provider-default`: external-provider target with a `public` ceiling and Phase 5 application-receipt requirement.
-
-Build a task-scoped local bundle:
+- `local-default`: local model, maximum sensitivity `private`;
+- `provider-default`: external provider, maximum sensitivity `public`, Phase 5 application authority required.
 
 ```bash
 python3 tools/ai_context.py bundle \
@@ -233,11 +192,7 @@ python3 tools/ai_context.py bundle \
   --task "debug the Rust parser" \
   --target local-default \
   --output /tmp/local-context.json
-```
 
-Build a conservative provider bundle:
-
-```bash
 python3 tools/ai_context.py bundle \
   ~/my-ai-context \
   --profile general \
@@ -246,89 +201,89 @@ python3 tools/ai_context.py bundle \
   --output /tmp/provider-context.json
 ```
 
-Legacy tag selection remains available:
+Task selection is deterministic lexical matching plus explicit profile-declared semantic aliases. No hidden embedding/model call decides disclosure.
+
+Hard exclusions can block exact memory IDs, record types, epistemic states, source observations, and exact content paths. Required dependency relationships may bypass positive task/tag relevance only. They never bypass disclosure permission.
+
+## Phase 7 encrypted storage
+
+The core reference path remains dependency-light. Encrypted storage is an optional backend with its own dependency file:
 
 ```bash
-python3 tools/ai_context.py bundle \
-  ~/my-ai-context \
-  --tags coding,alpha \
-  --output /tmp/tag-context.json
+python -m pip install -r requirements-storage.txt
 ```
 
-Task selection is deterministic lexical matching plus **explicit profile-declared semantic aliases**. No hidden embedding or model call decides whether private memory should be disclosed.
+Generate a key **outside** the encrypted store:
 
-Hard exclusions can block exact memory IDs, record types, epistemic states, source observation IDs, and exact dotted content paths.
-
-Required memory dependencies are declared by canonical `relationship` records using `requires` or `depends_on`. Semantic dependency endpoints must resolve to exactly one active memory. Missing or ambiguous endpoints fail closed.
-
-Dependencies may bypass positive task/tag relevance only. They never bypass target policy, sensitivity ceilings, lifecycle state, approval, or hard exclusions.
-
-Every routed record includes minimum-context diagnostics such as:
-
-```json
-{
-  "memory_id": "memory....",
-  "included_by": ["task_selector"],
-  "task_matches": ["parser", "rust"],
-  "tag_matches": [],
-  "dependency_of": [],
-  "dependency_depth": null
-}
+```bash
+python3 tools/storage.py keygen ~/keys/ai-context.key
 ```
 
-Diagnostics explain included records only. Withheld records are not enumerated into the bundle.
+Initialize a store:
+
+```bash
+python3 tools/storage.py init ~/private/ai-context.secure \
+  --key-file ~/keys/ai-context.key
+```
+
+Persist and recover a logical artifact:
+
+```bash
+python3 tools/storage.py put \
+  ~/private/ai-context.secure \
+  memory/records.jsonl \
+  ~/my-ai-context/memory/records.jsonl \
+  --key-file ~/keys/ai-context.key
+
+python3 tools/storage.py get \
+  ~/private/ai-context.secure \
+  memory/records.jsonl \
+  /tmp/records.jsonl \
+  --key-file ~/keys/ai-context.key
+```
+
+Rotate keys:
+
+```bash
+python3 tools/storage.py keygen ~/keys/ai-context-next.key
+python3 tools/storage.py rotate-key ~/private/ai-context.secure \
+  --old-key-file ~/keys/ai-context.key \
+  --new-key-file ~/keys/ai-context-next.key
+```
+
+If rotation is interrupted, normal access fails closed until `resume-rotation` completes with both external keys.
+
+Delete primary ciphertext with an explicit receipt:
+
+```bash
+python3 tools/storage.py delete ~/private/ai-context.secure \
+  memory/records.jsonl \
+  --key-file ~/keys/ai-context-next.key \
+  --reason "user-requested removal"
+```
+
+The receipt deliberately claims only that the primary ciphertext object was removed. It does not claim backups, snapshots, old exports, or key copies vanished.
+
+Recovery keys/passphrases/private keys must never be stored in AI-CONTEXT canonical memory, staging, curation state, bundles, storage manifests, or receipts.
+
+Phase 7 defines the storage contract and reference backend. It does **not** yet transparently replace every Phase 1–6 filesystem operation with encrypted virtual I/O. That larger integration can happen without changing canonical semantics.
 
 ## Validation
 
-Validate the core workspace:
-
 ```bash
 python3 tools/ai_context.py validate ~/my-ai-context
-```
-
-Validate Phase 4 evidence:
-
-```bash
 python3 tools/validate_evidence.py ~/my-ai-context
-```
-
-Validate Phase 5 curation authority/history:
-
-```bash
 python3 tools/validate_curation.py ~/my-ai-context
-```
-
-Validate Phase 6 routing configuration:
-
-```bash
 python3 tools/validate_routing.py ~/my-ai-context
-```
-
-Validate that a previously built bundle still exactly matches current memory/profile/policy/task/target state:
-
-```bash
-python3 tools/validate_routing.py \
-  ~/my-ai-context \
-  --bundle /tmp/local-context.json
+python3 tools/validate_routing.py ~/my-ai-context --bundle /tmp/local-context.json
+python3 tools/storage.py validate ~/private/ai-context.secure --key-file ~/keys/ai-context-next.key
 ```
 
 ## Memory record model
 
-A durable record carries more than text:
+A durable record carries stable identity, type, structured content, sensitivity, confidence, epistemic state, provenance references, approval, tags, lifecycle/expiry state, and creation/verification metadata.
 
-- stable `id`;
-- `record_type`;
-- structured `content`;
-- `sensitivity`;
-- `confidence`;
-- `epistemic_state`;
-- source observation references;
-- approval state;
-- tags;
-- lifecycle/expiry state;
-- creation and verification metadata.
-
-This preserves distinctions such as:
+Important distinctions:
 
 ```text
 PREFERENCE != FACT
@@ -337,6 +292,7 @@ AI SAID IT != VERIFIED
 PRIVATE != SAFE TO DISCLOSE
 SOURCE IMPORTED != MEMORY APPROVED
 RELEVANT != PERMITTED
+ENCRYPTED != AUTHORIZED
 DELETED != MERELY HIDDEN
 ```
 
@@ -344,48 +300,39 @@ DELETED != MERELY HIDDEN
 
 ```text
 spec/                    protocol and JSON schemas
-docs/                    architecture, threat model, curation/routing, provider notes
-tools/                   dependency-light reference CLIs
+docs/                    architecture, threat model, curation/routing/storage, provider notes
+tools/                   dependency-light reference CLIs + optional storage backend
 fixtures/conformance/    standalone valid/invalid protocol fixtures
 fixtures/provider-drift/ synthetic provider migration fixtures
-tests/                   conformance, security, evidence, curation, routing tests
+tests/                   conformance, security, evidence, curation, routing, storage tests
+requirements-storage.txt optional maintained cryptography dependency
 ```
 
-A real user workspace should live outside this public framework repository or in a separately controlled private location.
+A real user workspace and encrypted store should live outside this public framework repository or in a separately controlled private location. Key files must live outside the encrypted store.
 
 ## Security posture
 
-AI-CONTEXT is **not** a password manager. Do not intentionally preserve credentials, private keys, session cookies, recovery codes, bearer tokens, or similar secrets as AI memory.
+AI-CONTEXT is **not** a password manager. Do not intentionally preserve credentials, private keys, storage keys, session cookies, recovery codes, bearer tokens, passphrases, or similar secrets as AI memory.
 
-Secret-like material is rejected from canonical memory by policy. Routing adds a separate disclosure boundary and does not treat relevance as permission.
+Phase 7 protects stored payload contents against an attacker who gets the encrypted store without the external key. It does not protect plaintext after authorized decryption, a compromised live process, insecure exported plaintext, or every backup/snapshot by itself.
 
-Encryption-at-rest remains a storage-backend responsibility in the current reference implementation. Phase 7 tracks the hardened encrypted-storage boundary.
+See:
 
-See [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md).
+- [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md)
+- [`docs/STORAGE.md`](docs/STORAGE.md)
+- [`docs/ENCRYPTION-THREAT-MODELS.md`](docs/ENCRYPTION-THREAT-MODELS.md)
 
 ## Relationship to QSOL-CONTEXT
 
 `QSOLKCB/QSOL-CONTEXT` is an opinionated private implementation containing a specific user's identity, projects, research, chronology, restore machinery, provenance decisions, and routing policy.
 
-AI-CONTEXT extracts transferable structures such as:
-
-- selective loading;
-- deterministic bundles;
-- typed epistemic records;
-- provenance and honesty boundaries;
-- restore/context continuity without model-identity claims;
-- source precedence;
-- explicit exclusions;
-- profile and target routing;
-- receipts and fingerprints.
+AI-CONTEXT extracts transferable structures such as selective loading, deterministic bundles, typed epistemic records, provenance/honesty boundaries, restore/context continuity without model-identity claims, source precedence, explicit exclusions, routing, receipts, fingerprints, and now a vendor-neutral storage boundary.
 
 It intentionally does **not** inherit QSOL-specific identity, ontology, project names, cultural artifacts, or private data.
 
 ## Using AI-CONTEXT with QSOL-SUBSTRATE
 
-[`QSOLKCB/QSOL-SUBSTRATE`](https://github.com/QSOLKCB/QSOL-SUBSTRATE) remains an optional downstream companion for substrate-style delivery machinery such as model adapters, tool-less capsules, deterministic vector projections, model-specific prefix/latent experiments, and model-behaviour probes.
-
-The scope split is intentional:
+`QSOLKCB/QSOL-SUBSTRATE` remains an optional downstream companion for substrate-style delivery machinery such as model adapters, tool-less capsules, deterministic vector projections, model-specific prefix/latent experiments, and model-behaviour probes.
 
 ```text
 AI-CONTEXT
@@ -394,6 +341,7 @@ AI-CONTEXT
   curation / approval
   canonical memory
   selective disclosure / routing
+  optional encrypted persistence
         |
         | explicit routed bundle only
         v
@@ -409,13 +357,11 @@ Authority rule:
 
 > **AI-CONTEXT CANONICAL MEMORY > ROUTED BUNDLE > DOWNSTREAM SUBSTRATE PROJECTION**
 
-A downstream vector index, adapter, latent prefix, capsule, or probe result is derived. It must not silently rewrite, reclassify, promote, or outrank AI-CONTEXT canonical memory.
-
-QSOL-SUBSTRATE is currently a QSOL-specific public implementation, not a generic drop-in AI-CONTEXT backend. Use a purpose-built private bridge and hand off only an explicitly routed bundle. Never point a public-export workflow at the AI-CONTEXT vault, staging, curation, or canonical-memory directories.
+Encryption does not alter that order.
 
 ## Status
 
-Early reference implementation. **Phases 0-6 are complete.** The protocol remains experimental until restore/migration, encrypted-storage, derived-index, and broader interoperability gates reach the v1.0 release criteria in [`ROADMAP.md`](ROADMAP.md).
+Early reference implementation. **Phases 0–7 are complete.** The protocol remains experimental until restore/migration, derived-index, and broader interoperability gates reach the v1.0 release criteria in [`ROADMAP.md`](ROADMAP.md).
 
 ## License
 
