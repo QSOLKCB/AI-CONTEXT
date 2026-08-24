@@ -71,13 +71,38 @@ def _require_crypto() -> None:
         )
 
 
+def _json_loads_no_duplicates(text: str, *, label: str) -> Any:
+    """Parse strict JSON while rejecting duplicate object member names at every depth."""
+
+    def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise InteropError(f"duplicate JSON object member {key!r} in {label}")
+            result[key] = value
+        return result
+
+    try:
+        return json.loads(
+            text,
+            parse_constant=core.reject_nonfinite_constant,
+            object_pairs_hook=object_pairs,
+        )
+    except InteropError:
+        raise
+    except core.ContextError as exc:
+        raise InteropError(str(exc)) from exc
+    except json.JSONDecodeError as exc:
+        raise InteropError(f"cannot parse {label}: {exc}") from exc
+
+
 def _strict_json_bytes(path: Path) -> tuple[bytes, dict[str, Any]]:
     try:
         data = path.read_bytes()
     except OSError as exc:
         raise InteropError(f"cannot read JSON file {path}: {exc}") from exc
     try:
-        value = core.json_loads_strict(data.decode("utf-8"), label=str(path))
+        value = _json_loads_no_duplicates(data.decode("utf-8"), label=str(path))
     except UnicodeDecodeError as exc:
         raise InteropError(f"JSON file must be UTF-8: {path}") from exc
     if not isinstance(value, dict):
@@ -90,6 +115,8 @@ def _validate_bundle_bytes(data: bytes, bundle: dict[str, Any]) -> dict[str, str
         raise InteropError("signed receipt requires an AI-CONTEXT/BUNDLE")
     if bundle.get("schema_version") != core.PROTOCOL_VERSION:
         raise InteropError("unsupported bundle schema version")
+    if bundle.get("canonicalizer") != "python-json-v0.1":
+        raise InteropError("unsupported bundle canonicalizer")
     payload_hash = bundle.get("canonical_payload_sha256")
     store_hash = bundle.get("canonical_store_sha256")
     if not isinstance(payload_hash, str) or len(payload_hash) != 64:
@@ -162,10 +189,52 @@ def validate_capability_manifest(value: Any) -> dict[str, Any]:
         raise InteropError("capability manifest has missing/unknown fields")
     if value.get("protocol") != CAPABILITY_PROTOCOL or value.get("schema_version") != INTEROP_VERSION:
         raise InteropError("unsupported capability manifest protocol/schema")
-    if value.get("consumer_rules", {}).get("signature_grants_disclosure") is not False:
+
+    implementation = value.get("implementation")
+    if not isinstance(implementation, dict) or set(implementation) != {"id", "language", "protocol_version"}:
+        raise InteropError("capability manifest implementation fields invalid")
+    if implementation.get("protocol_version") != core.PROTOCOL_VERSION:
+        raise InteropError("capability manifest implementation protocol version unsupported")
+
+    canonicalization = value.get("canonicalization")
+    if not isinstance(canonicalization, dict) or set(canonicalization) != {
+        "active", "rfc8785_jcs", "migration_required_for_change"
+    }:
+        raise InteropError("capability manifest canonicalization fields invalid")
+    if canonicalization.get("active") != "python-json-v0.1":
+        raise InteropError("capability manifest active canonicalizer unsupported")
+    if canonicalization.get("rfc8785_jcs") != "evaluated-not-adopted":
+        raise InteropError("capability manifest JCS status invalid")
+    if canonicalization.get("migration_required_for_change") is not True:
+        raise InteropError("capability manifest must require migration for canonicalizer change")
+
+    signed = value.get("signed_bundle_receipts")
+    if not isinstance(signed, dict) or set(signed) != {
+        "algorithm", "preimage", "authority", "embedded_public_key", "external_trust_anchor_optional"
+    }:
+        raise InteropError("capability manifest signed-receipt fields invalid")
+    if signed.get("algorithm") != SIGNATURE_ALGORITHM or signed.get("preimage") != SIGNATURE_PREIMAGE:
+        raise InteropError("capability manifest signed-receipt algorithm/preimage unsupported")
+    if signed.get("authority") != SIGNATURE_AUTHORITY:
+        raise InteropError("capability manifest signed-receipt authority invalid")
+    if signed.get("embedded_public_key") is not True or signed.get("external_trust_anchor_optional") is not True:
+        raise InteropError("capability manifest signed-receipt key semantics invalid")
+
+    rules = value.get("consumer_rules")
+    if not isinstance(rules, dict) or set(rules) != {
+        "provider_memory_dependency", "index_results_require_routing",
+        "signature_grants_disclosure", "signature_grants_epistemic_authority",
+    }:
+        raise InteropError("capability manifest consumer_rules fields invalid")
+    if rules.get("provider_memory_dependency") != "none":
+        raise InteropError("capability manifest may not depend on provider-side memory")
+    if rules.get("index_results_require_routing") is not True:
+        raise InteropError("capability manifest must route derived-index results before disclosure")
+    if rules.get("signature_grants_disclosure") is not False:
         raise InteropError("capability manifest may not grant disclosure through signatures")
-    if value.get("consumer_rules", {}).get("signature_grants_epistemic_authority") is not False:
+    if rules.get("signature_grants_epistemic_authority") is not False:
         raise InteropError("capability manifest may not grant epistemic authority through signatures")
+
     core_value = {key: item for key, item in value.items() if key != "id"}
     if value.get("id") != stable_id("capability", core_value):
         raise InteropError("capability manifest id/hash mismatch")
@@ -219,8 +288,6 @@ def generate_signing_key(private_path: Path, public_path: Path) -> dict[str, str
     public_path = public_path.expanduser().resolve()
     if private_path == public_path:
         raise InteropError("private and public signing key paths must differ")
-    if private_path.exists() or public_path.exists():
-        raise InteropError("refusing to overwrite existing signing key file")
     private_path.parent.mkdir(parents=True, exist_ok=True)
     public_path.parent.mkdir(parents=True, exist_ok=True)
     private = Ed25519PrivateKey.generate()
@@ -232,34 +299,42 @@ def generate_signing_key(private_path: Path, public_path: Path) -> dict[str, str
     public_raw = private.public_key().public_bytes(
         serialization.Encoding.Raw, serialization.PublicFormat.Raw
     )
-    private_fd = None
-    public_fd = None
+    private_fd: int | None = None
+    public_fd: int | None = None
+    private_created = False
+    public_created = False
     try:
         private_fd = os.open(private_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        private_created = True
         with os.fdopen(private_fd, "wb") as handle:
             private_fd = None
             handle.write(private_raw.hex().encode("ascii") + b"\n")
             handle.flush()
             os.fsync(handle.fileno())
         public_fd = os.open(public_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        public_created = True
         with os.fdopen(public_fd, "wb") as handle:
             public_fd = None
             handle.write(public_raw.hex().encode("ascii") + b"\n")
             handle.flush()
             os.fsync(handle.fileno())
-    except Exception:
+    except Exception as exc:
         if private_fd is not None:
             os.close(private_fd)
         if public_fd is not None:
             os.close(public_fd)
-        try:
-            private_path.unlink()
-        except FileNotFoundError:
-            pass
-        try:
-            public_path.unlink()
-        except FileNotFoundError:
-            pass
+        if public_created:
+            try:
+                public_path.unlink()
+            except FileNotFoundError:
+                pass
+        if private_created:
+            try:
+                private_path.unlink()
+            except FileNotFoundError:
+                pass
+        if isinstance(exc, FileExistsError):
+            raise InteropError("refusing to overwrite existing signing key file") from exc
         raise
     key_id = KEY_ID_PREFIX + sha256_bytes(public_raw)
     return {
@@ -407,6 +482,8 @@ def validate_conformance_vectors(value: Any) -> dict[str, Any]:
         raise InteropError("conformance vector file must be an object")
     if value.get("protocol") != "AI-CONTEXT/INTEROP-CONFORMANCE" or value.get("schema_version") != INTEROP_VERSION:
         raise InteropError("unsupported interoperability conformance protocol/schema")
+    if value.get("canonicalizer") != "python-json-v0.1":
+        raise InteropError("unsupported interoperability conformance canonicalizer")
     vectors = value.get("canonicalization_vectors")
     if not isinstance(vectors, list) or not vectors:
         raise InteropError("canonicalization_vectors must be a non-empty array")
