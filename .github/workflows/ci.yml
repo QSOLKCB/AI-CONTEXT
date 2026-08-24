@@ -36,6 +36,7 @@ jobs:
           tools/storage.py
           tools/restore_legacy.py
           tools/restore.py
+          tools/indexes_legacy.py
           tools/indexes.py
           tests/test_ai_context.py
           tests/test_phase2_conformance.py
@@ -48,5 +49,6 @@ jobs:
           tests/test_phase8_restore.py
           tests/test_phase8_codex_hardening.py
           tests/test_phase9_indexes.py
+          tests/test_phase9_codex_hardening.py
       - name: Unit, security, schema, provider-drift, evidence, curation, routing, storage, restore, and index tests
         run: python -m unittest discover -s tests -v
