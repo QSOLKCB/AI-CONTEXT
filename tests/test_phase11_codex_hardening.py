@@ -76,6 +76,31 @@ class Phase11CodexHardeningTests(unittest.TestCase):
             run_cli(CURATION, "apply", self.workspace, "--candidate", candidate).stdout
         )["memory_id"]
 
+    def test_import_result_exposes_new_observation_ids_without_granting_authority(self):
+        source = self.root / "notes.md"
+        source.write_text("# Project notes\nA staged observation only.\n", encoding="utf-8")
+
+        result = ux.import_source(
+            self.workspace,
+            source,
+            mode="core",
+            adapter=None,
+            plugin=None,
+            yes=True,
+        )
+
+        ids = result.get("observation_ids")
+        self.assertIsInstance(ids, list)
+        self.assertTrue(ids)
+        self.assertTrue(all(isinstance(value, str) and value.startswith("obs.sha256:") for value in ids))
+        staged = {
+            row["id"]
+            for row in core.read_jsonl(self.workspace / "staging" / "observations.jsonl")
+        }
+        self.assertTrue(set(ids).issubset(staged))
+        self.assertFalse((self.workspace / "memory" / "records.jsonl").exists())
+        self.assertEqual(core.read_jsonl(self.workspace / "curation" / "candidates.jsonl"), [])
+
     def test_status_normalizes_approve_to_stable_approved_key(self):
         candidate = self.propose("approved-unapplied")
         self.approve(candidate)

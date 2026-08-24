@@ -3,8 +3,9 @@
 
 The original Phase 11 implementation is retained in ``ux_legacy.py``. This public
 entrypoint tightens the review findings around read-only governance logs, stable
-candidate status names, explicit conflict resolution, and resumable approved-candidate
-application while preserving the established Phase 1-10 authority paths.
+candidate status names, explicit conflict resolution, resumable approved-candidate
+application, and import-result observability while preserving the established
+Phase 1-10 authority paths.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from ux_legacy import *  # noqa: F401,F403
 _ORIGINAL_READ_ROWS = legacy._read_rows
 _ORIGINAL_CANDIDATE_STATUS_MAPS = legacy._candidate_status_maps
 _ORIGINAL_LIST_CANDIDATES = legacy.list_candidates
+_ORIGINAL_IMPORT_SOURCE = legacy.import_source
 
 
 def _read_rows(path: Path) -> list[dict[str, Any]]:
@@ -50,6 +52,44 @@ def list_candidates(workspace: Path, *, status: str = "pending") -> list[dict[st
     """Return the stable UX queue; accept legacy `approve` only as an input alias."""
     requested = "approved" if status == "approve" else status
     return _ORIGINAL_LIST_CANDIDATES(workspace, status=requested)
+
+
+def import_source(
+    workspace: Path,
+    source: Path,
+    *,
+    mode: str,
+    adapter: str | None,
+    plugin: Path | None,
+    yes: bool,
+) -> dict[str, Any]:
+    """Import through the established write path and report newly staged observation IDs.
+
+    Observation IDs are operator-visible handles for the next curation step. Reporting
+    them does not create review, application, memory, or disclosure authority.
+    """
+    resolved = workspace.expanduser().resolve()
+    before = {
+        row.get("id")
+        for row in _read_rows(resolved / "staging" / "observations.jsonl")
+        if isinstance(row.get("id"), str)
+    }
+    result = _ORIGINAL_IMPORT_SOURCE(
+        workspace,
+        source,
+        mode=mode,
+        adapter=adapter,
+        plugin=plugin,
+        yes=yes,
+    )
+    after = {
+        row.get("id")
+        for row in _read_rows(resolved / "staging" / "observations.jsonl")
+        if isinstance(row.get("id"), str)
+    }
+    rendered = dict(result)
+    rendered["observation_ids"] = sorted(after - before)
+    return rendered
 
 
 def _tui_review(workspace: Path) -> None:
@@ -152,6 +192,7 @@ def _tui_review(workspace: Path) -> None:
 legacy._read_rows = _read_rows
 legacy._candidate_status_maps = _candidate_status_maps
 legacy.list_candidates = list_candidates
+legacy.import_source = import_source
 legacy._tui_review = _tui_review
 
 # Re-export the hardened functions for direct library callers.
@@ -160,7 +201,6 @@ candidate_status = legacy.candidate_status
 candidate_conflicts_read_only = legacy.candidate_conflicts_read_only
 provenance_read_only = legacy.provenance_read_only
 inspect_bundle_read_only = legacy.inspect_bundle_read_only
-import_source = legacy.import_source
 review_candidate = legacy.review_candidate
 apply_candidate = legacy.apply_candidate
 backup_workspace = legacy.backup_workspace

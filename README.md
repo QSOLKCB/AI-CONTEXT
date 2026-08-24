@@ -1,180 +1,120 @@
 # AI-CONTEXT
 
-**A public framework for building private, portable AI memory from a user's own data.**
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22081189.svg)](https://doi.org/10.5281/zenodo.22081189)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-AI-CONTEXT is a vendor-neutral specification and reference implementation for turning private AI exports, repositories, notes, documents, Drive exports, email archives, and other user-controlled sources into curated context that can be selectively disclosed to compatible AI systems between sessions.
+**A vendor-neutral framework for private, portable, governed AI context memory.**
 
-It is inspired by architecture used in `QSOLKCB/QSOL-CONTEXT`, but deliberately separates reusable machinery from any one person's private context.
+AI-CONTEXT turns user-controlled sources such as AI exports, repositories, notes, documents, Drive exports, and email archives into **reviewed canonical memory** that can be selectively disclosed to a model or agent between sessions.
 
-## The core idea
+> **AI-CONTEXT works by itself. QSOL-SUBSTRATE is optional.**
 
-```text
-Private sources
-  |
-  |-- ChatGPT / Claude / Gemini / Grok / browser-chat exports
-  |-- local or exported Git repositories
-  |-- Markdown / text / JSON / JSONL / OOXML documents
-  |-- Google Drive / Takeout exports
-  |-- EML / MBOX email archives
-  v
-[ RAW VAULT ]            source material is not trusted as memory merely because it exists
-  v
-[ IMPORT + RECEIPTS ]    source identity, parser/layout, timestamps, provenance
-  v
-[ STAGING ]              observations, content objects, evidence graph
-  v
-[ CURATION ]             propose, review, resolve conflicts, verify, expire, tombstone
-  v
-[ CANONICAL MEMORY ]     typed approved records with provenance and lifecycle state
-  v
-[ ROUTING ]              profile + target policy + task/tag selection + dependency closure
-  v
-[ SELECTIVE BUNDLE ]     smallest permitted context for the current task and consumer
-  v
-AI / agent / local model / external provider / downstream substrate
+If you want the shortest practical path, read [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md).
 
-storage boundary (optional)
-  plaintext filesystem backend
-        or
-  encrypted directory backend + external key custody
+## The 30-second explanation
 
-portable continuity (optional)
-  minimum .aicr restore set
-        or
-  full working-set .aicr restore archive
-```
+AI-CONTEXT keeps four questions separate:
 
-Core boundaries:
+1. **What source material do I have?**
+2. **What have I explicitly chosen to remember?**
+3. **What is this particular model allowed to receive?**
+4. **How do I carry that governed context to another session or system?**
+
+That becomes:
 
 ```text
-SOURCE MATERIAL != CANONICAL MEMORY
-CANDIDATE != MEMORY
-LLM SUGGESTION != REVIEW DECISION
-RELEVANT != PERMITTED
-DEPENDENCY != PERMISSION BYPASS
-ROUTED BUNDLE != CANONICAL MEMORY
-ENCRYPTION AT REST != MEMORY AUTHORITY
-KEY ID != KEY MATERIAL
-RESTORE != MODEL IDENTITY
-STYLE/CULTURE != FACTUAL AUTHORITY
-RESTORED CONTEXT != ORIGINAL MODEL INSTANCE
+PRIVATE SOURCES
+      |
+      v
+[ IMPORT + RECEIPTS ]
+      |
+      v
+[ STAGING / EVIDENCE ]       source material is not memory yet
+      |
+      v
+[ CURATION ]                 propose -> review -> apply
+      |
+      v
+[ CANONICAL MEMORY ]         approved, typed, provenance-linked records
+      |
+      v
+[ ROUTING ]                  target + task + policy + sensitivity
+      |
+      v
+[ SELECTIVE BUNDLE ]         smallest permitted context for this consumer
+      |
+      v
+MODEL / AGENT / LOCAL RUNTIME / EXTERNAL PROVIDER
 ```
 
-A prior AI response may contain hallucinations. A repository may be stale. An email can repeat a false claim. A task may be relevant to material that the selected provider is not allowed to receive. Encryption can protect persisted bytes while doing nothing to make those bytes true or authorized. Restore can reconstruct governed context while doing nothing to recreate a model instance. AI-CONTEXT therefore keeps evidence, authority, curation, disclosure, storage, and continuity as distinct layers.
+Optional encrypted storage sits beneath the logical artifacts. Portable `.aicr` restore archives carry governed continuity between machines or sessions.
 
-## Design goals
+## Start here
 
-- **Private by default.** Raw exports, evidence state, curation state, routing policy, restore archives, and generated bundles are private workspace material.
-- **User-owned.** The source of truth is the user's store, not provider-side memory.
-- **Portable.** Core artifacts use UTF-8 JSON/JSONL plus deterministic hashes, receipts, and portable restore manifests.
-- **Vendor-neutral.** Provider export formats, model runtimes, storage backends, and restore targets are replaceable edges, not authorities.
-- **Provenance-preserving.** Canonical memory can trace back to observations, import receipts, source snapshots, and content identities.
-- **Typed memory.** Facts, preferences, project state, claims, hypotheses, instructions, relationships, publications, events, environment state, and provenance policy remain distinct classes.
-- **Human/policy curation authority.** Automated extractors and local LLMs may propose. They may not self-promote.
-- **Selective disclosure.** Build the smallest permitted task bundle rather than giving every model the complete private store.
-- **Fail closed.** Unknown formats, ambiguous dependencies, blocked required context, malformed authority state, interrupted key rotation, corrupt restore archives, and unknown major versions are rejected rather than guessed through.
-- **Deterministic where practical.** Identical memory, profile, routing policy, target, task, and selectors produce identical routed bundle bytes under the declared canonicalizer; restore snapshot identity binds the declared payload set.
-- **Restorable, not mystical.** Restore reconstructs curated context. It does not recreate hidden provider state, a model identity, or private chain of thought.
-
-## Trust zones
-
-### 1. Raw vault
-
-Original exports and source files. Treat as highly sensitive input. AI-CONTEXT never requires real private exports to be committed to this public framework repository.
-
-### 2. Staging and source evidence
-
-Parsed observations, import receipts, deterministic source snapshots, content-addressed text/binary references, and duplicate-provenance indexes. This layer is evidence, not memory.
-
-See:
-
-- [`docs/SOURCE-EVIDENCE.md`](docs/SOURCE-EVIDENCE.md)
-- [`docs/GOOGLE-DRIVE-EXPORTS.md`](docs/GOOGLE-DRIVE-EXPORTS.md)
-- [`docs/EMAIL-ARCHIVES.md`](docs/EMAIL-ARCHIVES.md)
-
-### 3. Curation
-
-Pending candidates, human/policy review decisions, advisory local-LLM suggestions, conflicts, application receipts, verification/confidence mutations, supersession edges, retention policy, and tombstone receipts.
-
-See [`docs/CURATION.md`](docs/CURATION.md).
-
-### 4. Canonical memory
-
-Only explicitly approved and applied records enter canonical memory. Canonical records retain type, content, sensitivity, epistemic state, confidence, provenance, tags, and lifecycle metadata.
-
-### 5. Selective routed bundle
-
-A deterministic task-scoped projection over canonical memory. The router decides which already-approved records a specific target may receive. It never mutates memory.
-
-See [`docs/ROUTING.md`](docs/ROUTING.md).
-
-### 6. Storage boundary
-
-A storage backend changes how logical artifact bytes are persisted. It never grants epistemic, curation, or disclosure authority.
-
-Phase 7 provides:
-
-- a plaintext `FilesystemBackend` implementing the storage contract;
-- an `EncryptedDirectoryBackend` using AES-256-GCM from the maintained `cryptography` package;
-- external key-file custody;
-- key rotation metadata and resumable rotation journal;
-- conservative ciphertext deletion receipts;
-- explicit external key-destruction attestations.
-
-See [`docs/STORAGE.md`](docs/STORAGE.md) and [`docs/ENCRYPTION-THREAT-MODELS.md`](docs/ENCRYPTION-THREAT-MODELS.md).
-
-### 7. Portable restore boundary
-
-A `.aicr` archive carries a declared continuity set, restore manifest, migration manifest, and payload hashes. It reconstructs portable AI-CONTEXT state on a cold-start machine without provider-side memory.
-
-See [`docs/RESTORE.md`](docs/RESTORE.md) and [`docs/CROSS-PROVIDER-RESTORE.md`](docs/CROSS-PROVIDER-RESTORE.md).
-
-## Source adapters
-
-### Core import adapters
-
-`tools/ai_context.py` retains dependency-light imports for ChatGPT, Claude, generic JSON/JSONL, Markdown/text, and local Git/source trees.
-
-### Higher-churn provider adapters
-
-`tools/provider_import.py` supports Gemini Takeout/My Activity, Grok account exports, browser-chat archives, and data-only community mappings.
+### 1. Clone AI-CONTEXT
 
 ```bash
-python3 tools/provider_import.py ~/my-ai-context ~/Downloads/MyActivity.json --adapter gemini
-python3 tools/provider_import.py ~/my-ai-context ~/Downloads/prod-grok-backend.json --adapter grok
-python3 tools/provider_import.py ~/my-ai-context ~/Downloads/chat-export.html --adapter browser-chat
+git clone https://github.com/QSOLKCB/AI-CONTEXT.git
+cd AI-CONTEXT
 ```
 
-Every provider receipt separates adapter identity/version, observed layout, and parse status. Provider-private reasoning-like fields are not silently promoted into ordinary observations.
+The core path is dependency-light.
 
-Provider notes and drift fixtures live under `docs/providers/` and `fixtures/provider-drift/`.
+### 2. Create a private workspace
 
-## Phase 4 evidence ingestion
-
-Use `tools/evidence_import.py` when repository/document provenance matters beyond the older generic import path:
+Keep real private data outside this public repository:
 
 ```bash
-python3 tools/evidence_import.py ~/my-ai-context ~/src/project --adapter repo
-python3 tools/evidence_import.py ~/my-ai-context ~/Documents/research --adapter document
-python3 tools/evidence_import.py ~/my-ai-context ~/Downloads/Takeout --adapter drive-export
-python3 tools/evidence_import.py ~/my-ai-context ~/Downloads/mail.mbox --adapter email
+python3 tools/ai_context.py init ~/my-ai-context
 ```
 
-Phase 4 keeps duplicate content collapsed without destroying independent provenance paths.
+### 3. Use the guided local interface
 
-## Phase 5 curation
+```bash
+python3 tools/ux.py tui ~/my-ai-context
+```
 
-The public legacy `promote` command is disabled. New canonical memory uses the governed curation path:
+The TUI covers imports, candidate review/application, conflicts, provenance, exact bundle inspection, backup, and restore.
+
+### 4. Import something
+
+Example:
+
+```bash
+python3 tools/ux.py import \
+  ~/my-ai-context \
+  ~/Documents/project-notes.md \
+  --mode core \
+  --yes
+```
+
+**Importing does not automatically create memory.** It creates staged evidence and observations.
+
+The import result now exposes the newly staged handles directly:
+
+```json
+{
+  "observation_ids": [
+    "obs.sha256:..."
+  ]
+}
+```
+
+Copy the relevant observation ID into the next step. If an idempotent re-import adds no new row, `observation_ids` can be empty.
+
+### 5. Propose, review, and apply a candidate
 
 ```bash
 python3 tools/curation.py propose \
   ~/my-ai-context \
   --observation obs.sha256:... \
   --record-type project_state \
-  --semantic-key project:alpha
+  --semantic-key project:example
+```
 
-python3 tools/curation.py queue ~/my-ai-context
+Then review/apply through the TUI, or explicitly:
 
+```bash
 python3 tools/curation.py review \
   ~/my-ai-context \
   --candidate candidate.sha256:... \
@@ -187,264 +127,490 @@ python3 tools/curation.py apply \
   --candidate candidate.sha256:...
 ```
 
-A local LLM can produce advisory curator envelopes, but even an LLM recommendation of `approve` cannot authorize canonical application.
+Only the final approved-and-separately-applied record becomes canonical memory.
 
-## Phase 6 selective disclosure and routing
+### 6. Preview exactly what a local model would receive
 
-Fresh workspaces receive `profiles/general.json` and private `routing/policy.json`.
+```bash
+python3 tools/ux.py inspect-bundle \
+  ~/my-ai-context \
+  --profile general \
+  --target local-default \
+  --task "continue work on the example project"
+```
 
-Default targets:
+This is read-only. A preview is not a disclosure event and does not create a bundle file.
 
-- `local-default`: local model, maximum sensitivity `private`;
-- `provider-default`: external provider, maximum sensitivity `public`, Phase 5 application authority required.
+`local-default` is a local-consumer policy and can permit private records. A preview or bundle built for `local-default` must **not** be forwarded to an external provider.
+
+### 7. Build the task bundle for the actual consumer
+
+For a local model or local agent:
 
 ```bash
 python3 tools/ai_context.py bundle \
   ~/my-ai-context \
   --profile general \
-  --task "debug the Rust parser" \
   --target local-default \
-  --output /tmp/local-context.json
+  --task "continue work on the example project" \
+  --output /tmp/local-ai-context-bundle.json
+```
 
+Give that file only to the matching local consumer.
+
+For an external provider, route again using the provider target:
+
+```bash
 python3 tools/ai_context.py bundle \
   ~/my-ai-context \
   --profile general \
-  --task "summarize public release history" \
   --target provider-default \
-  --output /tmp/provider-context.json
+  --task "continue work on the example project" \
+  --output /tmp/provider-ai-context-bundle.json
 ```
 
-Task selection is deterministic lexical matching plus explicit profile-declared semantic aliases. No hidden embedding/model call decides disclosure.
+Transport does not re-run routing. The target used to build the bundle is therefore part of the disclosure decision.
 
-Hard exclusions can block exact memory IDs, record types, epistemic states, source observations, and exact content paths. Required dependency relationships may bypass positive task/tag relevance only. They never bypass disclosure permission.
+For the detailed walkthrough, including backup and restore, see [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md).
 
-## Phase 7 encrypted storage
+---
 
-The core reference path remains dependency-light. Encrypted storage is an optional backend with its own dependency file:
+# Two ways to use AI-CONTEXT
+
+## Option A: AI-CONTEXT by itself
+
+This is the normal path for users who just want private portable context memory.
+
+```text
+AI-CONTEXT
+  private source ingestion
+  evidence + provenance
+  curation proposal
+  explicit review
+  explicit application
+  canonical memory
+  selective routing for the actual consumer
+  optional encrypted persistence
+  portable restore
+        |
+        v
+  task-scoped context bundle
+        |
+        v
+  matching local model / agent / provider target
+```
+
+You do **not** need:
+
+- QSOL-SUBSTRATE;
+- QSOL-CONTEXT;
+- a vector database;
+- provider-side memory;
+- a particular model vendor;
+- a cloud service;
+- an embedding model for disclosure decisions.
+
+## Option B: AI-CONTEXT + optional QSOL-SUBSTRATE
+
+[`QSOLKCB/QSOL-SUBSTRATE`](https://github.com/QSOLKCB/QSOL-SUBSTRATE) is a separate public QSOL context and delivery project. It can be useful when the same model also needs public QSOL context or when you want its adapter, capsule, vector, projection, or model-evaluation machinery.
+
+It is **not an AI-CONTEXT dependency**.
+
+A safe combined setup looks like this:
+
+```text
+PRIVATE CONTEXT                         PUBLIC QSOL CONTEXT
+
+AI-CONTEXT                              QSOL-SUBSTRATE
+    |                                         |
+    | Phase 6 routing                         | adapter / capsule / retrieval
+    | for actual consumer                     |
+    v                                         v
+private task bundle                   public substrate payload
+    |                                         |
+    +-------------------+---------------------+
+                        v
+                   model / agent
+```
+
+The two inputs keep separate provenance and authority.
+
+There is no documented command that silently imports an arbitrary AI-CONTEXT bundle into QSOL-SUBSTRATE canonical storage, and QSOL-SUBSTRATE cannot mutate AI-CONTEXT canonical memory.
+
+If you are not working with QSOL context, you can ignore QSOL-SUBSTRATE entirely.
+
+See [`docs/QSOL-SUBSTRATE-ADDON.md`](docs/QSOL-SUBSTRATE-ADDON.md) for both usage patterns and the exact authority boundary.
+
+## Why keep them separate?
+
+AI-CONTEXT answers:
+
+> What private context has this user governed, and what may this target receive?
+
+QSOL-SUBSTRATE answers:
+
+> What public QSOL context and delivery/evaluation machinery is available to this consumer?
+
+Those are related problems, but they are not the same authority domain.
+
+---
+
+# Core rules
+
+These are invariants, not slogans:
+
+```text
+SOURCE MATERIAL != CANONICAL MEMORY
+CANDIDATE != MEMORY
+LLM SUGGESTION != REVIEW DECISION
+REVIEW APPROVAL != CANONICAL APPLICATION
+RELEVANT != PERMITTED
+DEPENDENCY != PERMISSION BYPASS
+ROUTED BUNDLE != CANONICAL MEMORY
+LOCAL TARGET != EXTERNAL PROVIDER TARGET
+ENCRYPTION AT REST != MEMORY AUTHORITY
+KEY ID != KEY MATERIAL
+RESTORE != MODEL IDENTITY
+STYLE/CULTURE != FACTUAL AUTHORITY
+INDEX HIT != MEMORY AUTHORITY
+SIGNATURE != DISCLOSURE AUTHORITY
+CAPABILITY CLAIM != PERMISSION
+TUI ACTION != AUTHORITY
+PREVIEW != DISCLOSURE
+```
+
+The practical result is simple: **useful context does not automatically acquire authority merely because it exists, matches a query, is encrypted, is signed, or came from an AI.**
+
+# What AI-CONTEXT is not
+
+This section exists to prevent accidental over-claims.
+
+AI-CONTEXT is **not**:
+
+- an AI model;
+- a replacement for model weights or provider APIs;
+- a claim that an AI literally remembers prior sessions internally;
+- a mechanism for recreating an original model instance;
+- a password manager or secret vault;
+- a truth oracle;
+- a claim that imported text is correct merely because it was imported;
+- a claim that signatures make content true or permitted;
+- a claim that vector similarity grants disclosure authority;
+- a claim that every line of Python/Rust or every cryptographic primitive has been formally proved;
+- dependent on QSOL-SUBSTRATE;
+- a public copy of anyone's private AI context.
+
+Restore means **context reconstruction**, not identity reconstruction.
+
+Formal verification means **selected protocol invariants were proved in Lean 4**, not that every implementation detail, cryptographic library, runtime, provider, or external system has been mathematically verified.
+
+# What happens to your data?
+
+A real user's workspace should be kept in a private location outside this public repository.
+
+The public AI-CONTEXT repo ships synthetic fixtures and protocol machinery. It does not require real private exports to be committed publicly.
+
+Typical private workspace material includes:
+
+```text
+raw source material
+staging observations
+receipts and source evidence
+curation state
+canonical memory
+routing policy and profiles
+generated bundles
+derived indexes
+restore archives
+```
+
+Credentials, private keys, recovery codes, bearer tokens, storage keys, session cookies, and similar secrets should **not** become canonical AI memory.
+
+See [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md).
+
+# Curation: importing is not remembering
+
+A source can be useful and still be wrong.
+
+Examples:
+
+- an old AI response can contain a hallucination;
+- an email can repeat a false claim;
+- a repository can be stale;
+- two sources can conflict;
+- a preference should not silently become a fact.
+
+AI-CONTEXT therefore uses:
+
+```text
+SOURCE EVIDENCE
+      |
+      v
+PENDING CANDIDATE
+      |
+      v
+HUMAN / POLICY REVIEW
+      |
+      v
+EXPLICIT APPLICATION
+      |
+      v
+CANONICAL MEMORY
+```
+
+Automated semantic extractors and local LLM curators may propose. They may not self-promote.
+
+See [`docs/CURATION.md`](docs/CURATION.md).
+
+# Selective disclosure: relevance is not permission
+
+A record can be relevant to a task and still be forbidden for the selected consumer.
+
+Routing considers:
+
+- profile;
+- task and tags;
+- target class;
+- sensitivity ceiling;
+- lifecycle state;
+- approval/application authority;
+- hard exclusions;
+- dependency closure.
+
+Default target classes distinguish local models from external providers. A required dependency may bypass positive relevance selection only. It may **not** bypass disclosure permission.
+
+A routed bundle is valid for the target policy used to build it. Do not build with a local target and then forward the resulting bytes to an external provider. Re-route for the actual consumer.
+
+See [`docs/ROUTING.md`](docs/ROUTING.md).
+
+# Source adapters
+
+Core imports support ChatGPT-style and Claude-style exports, generic JSON/JSONL, Markdown/text, and local source trees.
+
+Higher-churn provider adapters cover Gemini export surfaces, Grok/xAI account exports, browser-chat archives, and data-only community mappings.
+
+Examples:
+
+```bash
+python3 tools/provider_import.py ~/my-ai-context ~/Downloads/MyActivity.json --adapter gemini
+python3 tools/provider_import.py ~/my-ai-context ~/Downloads/prod-grok-backend.json --adapter grok
+python3 tools/provider_import.py ~/my-ai-context ~/Downloads/chat-export.html --adapter browser-chat
+```
+
+Provider layouts are treated as versioned/unstable inputs, not timeless APIs. Unknown layouts fail explicitly or remain labelled partial/generic rather than being presented as exact parses.
+
+# Repository, document, Drive, and email evidence
+
+Use the evidence path when source identity and provenance matter beyond a basic text import:
+
+```bash
+python3 tools/evidence_import.py ~/my-ai-context ~/src/project --adapter repo
+python3 tools/evidence_import.py ~/my-ai-context ~/Documents/research --adapter document
+python3 tools/evidence_import.py ~/my-ai-context ~/Downloads/Takeout --adapter drive-export
+python3 tools/evidence_import.py ~/my-ai-context ~/Downloads/mail.mbox --adapter email
+```
+
+See:
+
+- [`docs/SOURCE-EVIDENCE.md`](docs/SOURCE-EVIDENCE.md)
+- [`docs/GOOGLE-DRIVE-EXPORTS.md`](docs/GOOGLE-DRIVE-EXPORTS.md)
+- [`docs/EMAIL-ARCHIVES.md`](docs/EMAIL-ARCHIVES.md)
+
+# Optional encrypted storage
+
+Encryption is a persistence property. It does not make content true, approved, or disclosable.
+
+Install the optional maintained dependency:
 
 ```bash
 python -m pip install -r requirements-storage.txt
 ```
 
-Generate a key **outside** the encrypted store:
+Generate keys **outside** the encrypted store:
 
 ```bash
 python3 tools/storage.py keygen ~/keys/ai-context.key
 ```
 
-Initialize a store:
+Initialize an encrypted directory store:
 
 ```bash
 python3 tools/storage.py init ~/private/ai-context.secure \
   --key-file ~/keys/ai-context.key
 ```
 
-Persist and recover a logical artifact:
+See [`docs/STORAGE.md`](docs/STORAGE.md) and [`docs/ENCRYPTION-THREAT-MODELS.md`](docs/ENCRYPTION-THREAT-MODELS.md).
+
+# Portable backup and restore
+
+Create a minimum continuity archive:
 
 ```bash
-python3 tools/storage.py put \
-  ~/private/ai-context.secure \
-  memory/records.jsonl \
-  ~/my-ai-context/memory/records.jsonl \
-  --key-file ~/keys/ai-context.key
-
-python3 tools/storage.py get \
-  ~/private/ai-context.secure \
-  memory/records.jsonl \
-  /tmp/records.jsonl \
-  --key-file ~/keys/ai-context.key
-```
-
-Rotate keys:
-
-```bash
-python3 tools/storage.py keygen ~/keys/ai-context-next.key
-python3 tools/storage.py rotate-key ~/private/ai-context.secure \
-  --old-key-file ~/keys/ai-context.key \
-  --new-key-file ~/keys/ai-context-next.key
-```
-
-If rotation is interrupted, normal access fails closed until `resume-rotation` completes with both external keys.
-
-Delete primary ciphertext with an explicit receipt:
-
-```bash
-python3 tools/storage.py delete ~/private/ai-context.secure \
-  memory/records.jsonl \
-  --key-file ~/keys/ai-context-next.key \
-  --reason "user-requested removal"
-```
-
-The receipt deliberately claims only that the primary ciphertext object was removed. It does not claim backups, snapshots, old exports, or key copies vanished.
-
-Recovery keys/passphrases/private keys must never be stored in AI-CONTEXT canonical memory, staging, curation state, bundles, storage manifests, or receipts.
-
-## Phase 8 restore and migration
-
-Create the smallest continuity archive needed to recover governed canonical context and local routing:
-
-```bash
-python3 tools/restore.py export \
-  ~/my-ai-context \
-  ~/backups/context-minimum.aicr \
-  --mode minimum
-```
-
-Create a full working-set archive including receipts, staging evidence, source snapshots/content indexes, and curation history:
-
-```bash
-python3 tools/restore.py export \
-  ~/my-ai-context \
-  ~/backups/context-full.aicr \
-  --mode full
-```
-
-Optionally include presentation-only style/culture enrichment:
-
-```bash
-python3 tools/restore.py export \
+python3 tools/ux.py backup \
   ~/my-ai-context \
   ~/backups/context.aicr \
   --mode minimum \
-  --enrichment ~/private/style-culture.json
+  --yes
 ```
 
-The enrichment schema requires:
-
-```text
-factual_authority = none
-apply_scope = presentation_only
-```
-
-Validate or inspect an archive without restoring:
+Restore into a new workspace:
 
 ```bash
-python3 tools/restore.py validate ~/backups/context.aicr
-python3 tools/restore.py inspect ~/backups/context.aicr
-```
-
-Cold-start restore into a path that does not already exist:
-
-```bash
-python3 tools/restore.py restore \
+python3 tools/ux.py restore \
   ~/backups/context.aicr \
-  ~/restored-ai-context
+  ~/restored-ai-context \
+  --yes
 ```
 
-Restore is assembled in a temporary sibling directory and becomes visible only after artifact hashes, workspace policy, canonical memory, profiles/routing, and applicable evidence/curation state validate.
-
-Portable restore archives declare:
+Portable archives declare that provider-side memory is not a prerequisite.
 
 ```text
 provider_memory_dependency = none
 restore_claim = context-continuity-not-model-identity
 ```
 
-Raw vault exports and historical bundles are not continuity requirements. Unknown major versions fail closed. Additive metadata is allowed only under a non-authoritative `extensions` object.
+See [`docs/RESTORE.md`](docs/RESTORE.md) and [`docs/CROSS-PROVIDER-RESTORE.md`](docs/CROSS-PROVIDER-RESTORE.md).
 
-## Validation
+# Derived indexes
+
+AI-CONTEXT can build deterministic vector, graph, and lexical search projections over approved active canonical memory.
+
+They are caches and retrieval accelerators only.
+
+```text
+INDEX HIT != MEMORY AUTHORITY
+INDEX MEMBERSHIP != DISCLOSURE PERMISSION
+STALE INDEX != USABLE INDEX
+```
+
+A retrieved candidate returns to canonical validation and routing before disclosure.
+
+See [`docs/INDEXES.md`](docs/INDEXES.md).
+
+# Interoperability
+
+The v1.0.0 interoperability layer includes:
+
+- stabilized Python reference surfaces;
+- language-neutral conformance vectors;
+- an independent Rust verifier;
+- Ed25519 signed bundle receipts;
+- capability manifests;
+- read-only MCP/tool examples.
+
+A valid signature establishes byte integrity under a key. It does not create factual truth, identity trust, memory authority, or disclosure permission.
+
+See [`docs/INTEROPERABILITY.md`](docs/INTEROPERABILITY.md).
+
+# Lean 4 formalization
+
+The Lean 4 formalization was created **after** the immutable `v1.0.0` tag and targets that exact frozen release.
+
+Reference target:
+
+```text
+tag:      v1.0.0
+commit:   53d7d69dfacecf6f8605f5b6a51b2c68ee66572a
+Git tree: 2c0592cbd074d7596e70681cc5ed869d6b9b00e4
+```
+
+The proof layer establishes selected structural invariants around authority, curation, sensitivity, disclosure, restore, storage, indexes, signatures/tools, UX, and migration.
+
+It deliberately does **not** re-prove AES-GCM, Ed25519, SHA-256, Python, Rust, Git, GitHub Actions, provider behavior, or every implementation detail.
+
+See [`docs/FORMALIZATION.md`](docs/FORMALIZATION.md).
+
+# Validation and tests
+
+Useful validation commands include:
 
 ```bash
 python3 tools/ai_context.py validate ~/my-ai-context
 python3 tools/validate_evidence.py ~/my-ai-context
 python3 tools/validate_curation.py ~/my-ai-context
 python3 tools/validate_routing.py ~/my-ai-context
-python3 tools/validate_routing.py ~/my-ai-context --bundle /tmp/local-context.json
-python3 tools/storage.py validate ~/private/ai-context.secure --key-file ~/keys/ai-context-next.key
-python3 tools/restore.py validate ~/backups/context.aicr
+python3 tools/validate_formalization.py
 ```
 
-## Memory record model
+The release and archival CI also exercises Python conformance/security/adversarial tests, Python/Rust interoperability, the tracked-public-tree release audit, Lean builds, deterministic archival generation, independent archive verification, and reproduction from the generated scholarly source ZIP.
 
-A durable record carries stable identity, type, structured content, sensitivity, confidence, epistemic state, provenance references, approval, tags, lifecycle/expiry state, and creation/verification metadata.
+Passing finite tests does not mean every possible future input has been proved safe. The project states test and proof scope explicitly rather than converting finite evidence into universal claims.
 
-Important distinctions:
+# Documentation map
+
+If you want to...
+
+| Goal | Read |
+|---|---|
+| get running quickly | [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) |
+| understand the full architecture | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| understand threat assumptions | [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md) |
+| understand evidence/provenance | [`docs/SOURCE-EVIDENCE.md`](docs/SOURCE-EVIDENCE.md) |
+| understand review and memory authority | [`docs/CURATION.md`](docs/CURATION.md) |
+| understand selective disclosure | [`docs/ROUTING.md`](docs/ROUTING.md) |
+| use encrypted storage | [`docs/STORAGE.md`](docs/STORAGE.md) |
+| back up / restore context | [`docs/RESTORE.md`](docs/RESTORE.md) |
+| understand derived retrieval | [`docs/INDEXES.md`](docs/INDEXES.md) |
+| integrate another runtime/language | [`docs/INTEROPERABILITY.md`](docs/INTEROPERABILITY.md) |
+| understand Lean proof scope | [`docs/FORMALIZATION.md`](docs/FORMALIZATION.md) |
+| use QSOL-SUBSTRATE optionally | [`docs/QSOL-SUBSTRATE-ADDON.md`](docs/QSOL-SUBSTRATE-ADDON.md) |
+| inspect the scholarly archive | [`docs/ARCHIVAL-RECORD.md`](docs/ARCHIVAL-RECORD.md) |
+
+# Relationship to QSOL-CONTEXT
+
+`QSOLKCB/QSOL-CONTEXT` is an opinionated private implementation containing one user's private identity/context/project state and associated policies.
+
+AI-CONTEXT extracts the reusable architecture without inheriting that private content or QSOL-specific personal ontology.
+
+In other words:
 
 ```text
-PREFERENCE != FACT
-PROJECT_STATE != SCIENTIFIC CLAIM
-AI SAID IT != VERIFIED
-PRIVATE != SAFE TO DISCLOSE
-SOURCE IMPORTED != MEMORY APPROVED
-RELEVANT != PERMITTED
-ENCRYPTED != AUTHORIZED
-STYLE/CULTURE != FACTUAL AUTHORITY
-RESTORED CONTEXT != ORIGINAL MODEL INSTANCE
-DELETED != MERELY HIDDEN
+QSOL-CONTEXT = one private deployment / design ancestor
+AI-CONTEXT   = reusable public framework
 ```
 
-## Repository layout
+# Release identity and scholarly record
+
+**AI-CONTEXT v1.0.0 is frozen and published.**
+
+- Version: `1.0.0`
+- License: Apache-2.0
+- Frozen tag: `v1.0.0`
+- Frozen implementation commit: `53d7d69dfacecf6f8605f5b6a51b2c68ee66572a`
+- DOI: [`10.5281/zenodo.22081189`](https://doi.org/10.5281/zenodo.22081189)
+- Resource type: Software
+
+Canonical citation:
+
+> Slade, T. (2026). *AI-CONTEXT v1.0.0: A Vendor-Neutral Framework for Private, Portable, Governed AI Context Memory* (Version 1.0.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.22081189
+
+The Zenodo record contains the reproducible three-file scholarly surface:
+
+```text
+AI-CONTEXT-1.0.0-source.zip
+AI-CONTEXT-v1.0.0-Overview.pdf
+RELEASE-NOTES.md
+```
+
+The source archive explicitly separates the exact frozen `v1.0.0` implementation tree from the later Lean formalization so archival provenance does not pretend that post-tag proof files existed in the original release.
+
+# Repository layout
 
 ```text
 spec/                    protocol and JSON schemas
-docs/                    architecture, threat model, curation/routing/storage/restore, provider notes
-tools/                   dependency-light reference CLIs + optional storage/restore tooling
-fixtures/conformance/    standalone valid/invalid protocol fixtures
-fixtures/provider-drift/ synthetic provider migration fixtures
-tests/                   conformance, security, evidence, curation, routing, storage, restore tests
-requirements-storage.txt optional maintained cryptography dependency
+docs/                    human-facing architecture and usage documentation
+tools/                   reference CLIs, validators, storage/restore/archive tooling
+fixtures/                 synthetic conformance/provider/interoperability fixtures
+tests/                    conformance, security and adversarial tests
+rust/                     independent interoperability verifier
+formal/                   post-tag Lean 4 selected-invariant formalization
+release/                  release freeze/formalization target metadata
 ```
 
-A real user workspace, encrypted store, and restore archive should live outside this public framework repository or in a separately controlled private location. Key files must live outside encrypted stores and restore archives.
-
-## Security posture
-
-AI-CONTEXT is **not** a password manager. Do not intentionally preserve credentials, private keys, storage keys, session cookies, recovery codes, bearer tokens, passphrases, or similar secrets as AI memory.
-
-Phase 7 protects stored payload contents against an attacker who gets the encrypted store without the external key. It does not protect plaintext after authorized decryption, a compromised live process, insecure exported plaintext, or every backup/snapshot by itself.
-
-Phase 8 reconstructs portable context from declared artifacts. It does not reconstruct provider-private memory, model weights, hidden chain of thought, or an original model identity.
-
-See:
-
-- [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md)
-- [`docs/STORAGE.md`](docs/STORAGE.md)
-- [`docs/ENCRYPTION-THREAT-MODELS.md`](docs/ENCRYPTION-THREAT-MODELS.md)
-- [`docs/RESTORE.md`](docs/RESTORE.md)
-- [`docs/CROSS-PROVIDER-RESTORE.md`](docs/CROSS-PROVIDER-RESTORE.md)
-
-## Relationship to QSOL-CONTEXT
-
-`QSOLKCB/QSOL-CONTEXT` is an opinionated private implementation containing a specific user's identity, projects, research, chronology, restore machinery, provenance decisions, and routing policy.
-
-AI-CONTEXT extracts transferable structures such as selective loading, deterministic bundles, typed epistemic records, provenance/honesty boundaries, source precedence, explicit exclusions, routing, receipts, fingerprints, encrypted persistence, and provider-neutral restore/context continuity without model-identity claims.
-
-It intentionally does **not** inherit QSOL-specific identity, ontology, project names, cultural artifacts, or private data.
-
-## Using AI-CONTEXT with QSOL-SUBSTRATE
-
-`QSOLKCB/QSOL-SUBSTRATE` remains an optional downstream companion for substrate-style delivery machinery such as model adapters, tool-less capsules, deterministic vector projections, model-specific prefix/latent experiments, and model-behaviour probes.
-
-```text
-AI-CONTEXT
-  private ingestion
-  evidence + provenance
-  curation / approval
-  canonical memory
-  selective disclosure / routing
-  optional encrypted persistence
-  portable restore / migration
-        |
-        | explicit routed bundle only
-        v
-QSOL-SUBSTRATE-style downstream layer
-  transport adapters
-  tool-less capsules
-  vector/retrieval projections
-  prefix / latent experiments
-  probe/evaluation machinery
-```
-
-Authority rule:
-
-> **AI-CONTEXT CANONICAL MEMORY > ROUTED BUNDLE > DOWNSTREAM SUBSTRATE PROJECTION**
-
-Encryption and restore do not alter that order.
-
-## Status
-
-Early reference implementation. **Phases 0–8 are complete.** The protocol remains experimental until derived-index and broader interoperability gates reach the v1.0 release criteria in [`ROADMAP.md`](ROADMAP.md).
-
-## License
+# License
 
 Apache-2.0. See [`LICENSE`](LICENSE).
+
+---
+
+**The shortest useful summary:** AI-CONTEXT lets you keep the memory store yours, make remembering an explicit governed act, and decide what each AI actually gets to see.
