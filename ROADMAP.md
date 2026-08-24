@@ -220,26 +220,28 @@ AI-CONTEXT v1.0 is frozen with every release gate satisfied:
 
 ## Phase 12 — Lean 4 formalization of frozen v1.0.0
 
-**Active.** Formalization targets exactly `v1.0.0` at commit `53d7d69dfacecf6f8605f5b6a51b2c68ee66572a`. Later implementation changes require a new formalization target/version rather than silently changing the theorem subject.
+**Complete.** Formalization targets exactly `v1.0.0` at commit `53d7d69dfacecf6f8605f5b6a51b2c68ee66572a` and Git tree `2c0592cbd074d7596e70681cc5ed869d6b9b00e4`. The post-tag Lean layer is pinned to `leanprover/lean4:v4.30.0`, uses Lean core plus Lake with no Mathlib dependency, proves a named archival theorem set, checks finite invalid-state counterexamples, and maps every named theorem back to the frozen invariant, reference implementation surface, and executable adversarial/conformance evidence. It does not alter the frozen v1.0.0 tag or claim to prove cryptographic primitives or every implementation detail.
 
-- [ ] Pin Lean toolchain and Lake project metadata.
-- [ ] Define formal core datatypes for trust zones, record classes, sensitivity, epistemic state, lifecycle, authority, and disclosure targets.
-- [ ] Formalize `SOURCE != MEMORY` and candidate/application authority boundaries.
-- [ ] Formalize sensitivity non-downgrade and secret-memory exclusions.
-- [ ] Formalize curation review/application, supersession, tombstone, and mutation invariants.
-- [ ] Formalize `RELEVANT != PERMITTED` and `DEPENDENCY != PERMISSION BYPASS`.
-- [ ] Formalize restore continuity without model-identity claims.
-- [ ] Formalize style/culture enrichment as having zero factual authority.
-- [ ] Formalize storage/encryption as persistence properties that confer no epistemic authority; do not attempt to re-prove AES-GCM itself.
-- [ ] Formalize derived indexes as non-authoritative projections and stale-source fingerprints as unusable retrieval state.
-- [ ] Formalize signed receipts as byte-integrity attestations that confer neither disclosure nor epistemic authority.
-- [ ] Formalize capability/tool transport metadata as non-authoritative with respect to canonical memory and routing permission.
-- [ ] Formalize UX/operator actions as orchestration only: confirmations, previews, and menu actions do not create protocol authority.
-- [ ] Formalize migration unknown-major rejection and extensions-only non-authoritative metadata.
-- [ ] Add finite reference models and counterexamples for invalid promotion, disclosure, migration, restore, derived-index, signature-authority, tool-authority, and UX-authority states.
-- [ ] Map each formal theorem to the corresponding protocol invariant, reference implementation behavior, and adversarial test.
-- [ ] Add Lean CI and require the archival theorem set to build without unresolved proof placeholders.
-- [ ] Produce a machine-readable theorem inventory for the archival record.
+- [x] Pin Lean toolchain and Lake project metadata.
+- [x] Define formal core datatypes for trust zones, record classes, sensitivity, epistemic state, lifecycle, authority, and disclosure targets.
+- [x] Formalize `SOURCE != MEMORY` and candidate/application authority boundaries.
+- [x] Formalize sensitivity non-downgrade and secret-memory exclusions.
+- [x] Formalize curation review/application, supersession, tombstone, and mutation invariants.
+- [x] Formalize `RELEVANT != PERMITTED` and `DEPENDENCY != PERMISSION BYPASS`.
+- [x] Formalize restore continuity without model-identity claims.
+- [x] Formalize style/culture enrichment as having zero factual authority.
+- [x] Formalize storage/encryption as persistence properties that confer no epistemic authority; do not attempt to re-prove AES-GCM itself.
+- [x] Formalize derived indexes as non-authoritative projections and stale-source fingerprints as unusable retrieval state.
+- [x] Formalize signed receipts as byte-integrity attestations that confer neither disclosure nor epistemic authority.
+- [x] Formalize capability/tool transport metadata as non-authoritative with respect to canonical memory and routing permission.
+- [x] Formalize UX/operator actions as orchestration only: confirmations, previews, and menu actions do not create protocol authority.
+- [x] Formalize migration unknown-major rejection and extensions-only non-authoritative metadata.
+- [x] Add finite reference models and counterexamples for invalid promotion, disclosure, migration, restore, derived-index, signature-authority, tool-authority, and UX-authority states.
+- [x] Map each formal theorem to the corresponding protocol invariant, reference implementation behavior, and adversarial test.
+- [x] Add Lean CI and require the archival theorem set to build without unresolved proof placeholders.
+- [x] Produce a machine-readable theorem inventory for the archival record.
+
+`formal/AIContextFormal/Theorems.lean` contains the named theorem set and checked finite counterexamples. `formal/theorem-inventory.json` is the archival theorem map. `tools/validate_formalization.py` enforces exact target binding, one-to-one named theorem inventory coverage, a minimum finite-counterexample set, the pinned toolchain, and zero `sorry`, `admit`, or `axiom` declarations. CI runs this validator and `lake build` in addition to the complete Python/Rust/interoperability/release-audit gate.
 
 ### Formalization authority rule
 
