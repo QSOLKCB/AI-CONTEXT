@@ -1,109 +1,94 @@
 #!/usr/bin/env python3
-"""Phase 9 deterministic derived indexes for AI-CONTEXT.
+"""Hardened Phase 9 deterministic derived indexes for AI-CONTEXT.
 
-Indexes are rebuildable retrieval accelerators over canonical memory. They never grant
-memory authority or disclosure permission. Every usable projection is bound to a source
-fingerprint of the complete canonical store and must validate fresh before query use.
+The original Phase 9 implementation is retained in ``indexes_legacy.py`` for audit and
+compatibility. This public layer closes review findings around workspace privacy, canonical
+snapshot consistency, exact artifact bytes, concurrent rebuilds, and search snapshot reuse.
+
+Indexes remain rebuildable retrieval accelerators only. They never grant memory authority
+or disclosure permission.
 """
 
 from __future__ import annotations
 
-import argparse
-import hashlib
 import json
 import os
 import shutil
-import sys
 import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import ai_context_legacy as core
-import routing
+import indexes_legacy as legacy
+from indexes_legacy import *  # noqa: F401,F403
 
-INDEX_VERSION = "0.1.0"
-VECTOR_DIMENSIONS = 256
-INDEX_DIR = "indexes"
-INDEX_FILES = {
-    "vector": "vector.json",
-    "graph": "graph.json",
-    "search": "search.json",
-    "manifest": "manifest.json",
-}
-RETRIEVAL_POLICY = "approved-active-v1"
-TOKENIZATION = "unicode-casefold-v1"
-VECTOR_GENERATOR = "sha256-token-bucket-count-v1"
+# Public constants/classes are imported above. Explicitly alias private helpers used by the
+# hardened layer because star-import deliberately excludes underscore-prefixed names.
+IndexError = legacy.IndexError
+INDEX_VERSION = legacy.INDEX_VERSION
+INDEX_DIR = legacy.INDEX_DIR
+INDEX_FILES = legacy.INDEX_FILES
+RETRIEVAL_POLICY = legacy.RETRIEVAL_POLICY
+TOKENIZATION = legacy.TOKENIZATION
+VECTOR_GENERATOR = legacy.VECTOR_GENERATOR
+VECTOR_DIMENSIONS = legacy.VECTOR_DIMENSIONS
+
+_PRIVATE_IGNORE_RULES = (
+    "indexes/",
+    ".indexes-build-*/",
+    ".indexes-old-*/",
+)
+_DEFAULT_PRIVATE_IGNORE_RULES = (
+    "vault/",
+    "staging/",
+    "receipts/",
+    "memory/",
+    "bundles/",
+    "curation/",
+    "routing/",
+    "enrichment/",
+    *_PRIVATE_IGNORE_RULES,
+    "*.private.*",
+)
 
 
-class IndexError(core.ContextError):
-    pass
-
-
-def canonical_sha(value: Any) -> str:
-    return core.sha256_bytes(core.canonical_bytes(value))
-
-
-def stable_id(prefix: str, core_value: dict[str, Any]) -> str:
-    return f"{prefix}.sha256:{canonical_sha(core_value)}"
-
-
-def _atomic_write(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+def _memory_file_bytes(workspace: Path) -> bytes:
+    path = workspace / "memory" / "records.jsonl"
     try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp_name, path)
-    except Exception:
-        try:
-            os.unlink(temp_name)
-        except FileNotFoundError:
-            pass
-        raise
+        return path.read_bytes() if path.exists() else b""
+    except OSError as exc:
+        raise IndexError(f"cannot read canonical memory snapshot: {exc}") from exc
 
 
-def _write_json(path: Path, value: Any) -> None:
-    _atomic_write(path, core.canonical_bytes(value) + b"\n")
+def _parse_records_bytes(workspace: Path, raw: bytes) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise IndexError("canonical memory records must be UTF-8 JSONL") from exc
 
-
-def _read_json(path: Path) -> dict[str, Any]:
-    value = core.load_json(path)
-    if not isinstance(value, dict):
-        raise IndexError(f"index artifact must be an object: {path}")
-    return value
-
-
-def _ensure_private_index_path(workspace: Path) -> None:
-    gitignore = workspace / ".gitignore"
-    if gitignore.exists():
-        lines = gitignore.read_text(encoding="utf-8").splitlines()
-        if "indexes/" not in lines:
-            lines.append("indexes/")
-            gitignore.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    index_dir = workspace / INDEX_DIR
-    if index_dir.is_symlink():
-        raise IndexError("indexes/ must not be a symlink")
-
-
-def _validated_records(workspace: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    core.ensure_workspace(workspace)
     policy = core.load_policy(workspace)
-    records = core.read_jsonl(workspace / "memory" / "records.jsonl")
+    records: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for record in records:
-        core.validate_memory_record(record, workspace, policy)
-        rid = record.get("id")
+    for line_no, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        value = core.json_loads_strict(line, label=f"memory/records.jsonl:{line_no}")
+        if not isinstance(value, dict):
+            raise IndexError(f"canonical memory row must be an object: line {line_no}")
+        core.validate_memory_record(value, workspace, policy)
+        rid = value.get("id")
         if not isinstance(rid, str) or not rid:
             raise IndexError("canonical memory row missing id")
         if rid in seen:
             raise IndexError(f"duplicate canonical memory id: {rid}")
         seen.add(rid)
+        records.append(value)
+
     ordered = sorted(records, key=lambda row: row["id"])
     active = [
-        row for row in ordered
+        row
+        for row in ordered
         if row.get("approval") == "approved"
         and isinstance(row.get("lifecycle"), dict)
         and row["lifecycle"].get("state") == "active"
@@ -111,92 +96,98 @@ def _validated_records(workspace: Path) -> tuple[list[dict[str, Any]], list[dict
     return ordered, active
 
 
-def source_fingerprint(workspace: Path) -> dict[str, Any]:
-    records, active = _validated_records(workspace)
+def _fingerprint_from_records(
+    records: list[dict[str, Any]], active: list[dict[str, Any]]
+) -> dict[str, Any]:
     core_value = {
         "protocol": "AI-CONTEXT/DERIVED-SOURCE-FINGERPRINT",
         "schema_version": INDEX_VERSION,
         "canonicalizer": "python-json-v0.1",
         "retrieval_policy": RETRIEVAL_POLICY,
-        "canonical_store_sha256": canonical_sha(records),
+        "canonical_store_sha256": legacy.canonical_sha(records),
         "canonical_record_count": len(records),
-        "retrieval_records_sha256": canonical_sha(active),
+        "retrieval_records_sha256": legacy.canonical_sha(active),
         "retrieval_record_count": len(active),
     }
-    return {"id": stable_id("index-source", core_value), **core_value}
+    return {"id": legacy.stable_id("index-source", core_value), **core_value}
 
 
-def _flatten_text(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, bool):
-        return ["true" if value else "false"]
-    if isinstance(value, (int, float)):
-        return [str(value)]
-    if isinstance(value, list):
-        result: list[str] = []
-        for item in value:
-            result.extend(_flatten_text(item))
-        return result
-    if isinstance(value, dict):
-        result = []
-        for key in sorted(value):
-            result.append(str(key))
-            result.extend(_flatten_text(value[key]))
-        return result
-    return []
+def _capture_records_snapshot(
+    workspace: Path,
+) -> tuple[bytes, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    """Capture and validate one exact canonical-memory byte snapshot.
+
+    The bytes are re-read after parsing/validation so a concurrent writer cannot make one
+    snapshot silently span two versions of ``records.jsonl``.
+    """
+    core.ensure_workspace(workspace)
+    raw = _memory_file_bytes(workspace)
+    records, active = _parse_records_bytes(workspace, raw)
+    if _memory_file_bytes(workspace) != raw:
+        raise IndexError("canonical memory changed while the index snapshot was being captured")
+    return raw, records, active, _fingerprint_from_records(records, active)
 
 
-def record_text(record: dict[str, Any]) -> str:
-    parts: list[str] = [str(record.get("record_type", ""))]
-    parts.extend(str(tag) for tag in record.get("tags", []) if isinstance(tag, str))
-    parts.extend(_flatten_text(record.get("content")))
-    notes = record.get("notes")
-    if isinstance(notes, str) and notes:
-        parts.append(notes)
-    return "\n".join(parts)
+def source_fingerprint(workspace: Path) -> dict[str, Any]:
+    workspace = workspace.expanduser().resolve()
+    _raw, _records, _active, fingerprint = _capture_records_snapshot(workspace)
+    return fingerprint
 
 
-def token_sequence(value: str) -> list[str]:
-    return [
-        token.casefold()
-        for token in routing.TOKEN_RE.findall(value)
-        if token.casefold() not in routing.STOPWORDS
-    ]
+def _ensure_private_index_path(workspace: Path) -> None:
+    """Establish the private index path only after workspace validation succeeds."""
+    core.ensure_workspace(workspace)
+    gitignore = workspace / ".gitignore"
+    if gitignore.is_symlink():
+        raise IndexError("workspace .gitignore must not be a symlink")
+    if gitignore.exists() and not gitignore.is_file():
+        raise IndexError("workspace .gitignore must be a regular file")
+
+    if gitignore.exists():
+        try:
+            lines = gitignore.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as exc:
+            raise IndexError(f"cannot read workspace .gitignore: {exc}") from exc
+        changed = False
+        for rule in _PRIVATE_IGNORE_RULES:
+            if rule not in lines:
+                lines.append(rule)
+                changed = True
+        if changed:
+            legacy._atomic_write(
+                gitignore,
+                ("\n".join(lines) + "\n").encode("utf-8"),
+            )
+    else:
+        legacy._atomic_write(
+            gitignore,
+            ("\n".join(_DEFAULT_PRIVATE_IGNORE_RULES) + "\n").encode("utf-8"),
+        )
+
+    index_dir = workspace / INDEX_DIR
+    if index_dir.is_symlink():
+        raise IndexError("indexes/ must not be a symlink")
 
 
-def _token_dimension(token: str) -> int:
-    digest = hashlib.sha256(token.encode("utf-8")).digest()
-    return int.from_bytes(digest[:8], "big") % VECTOR_DIMENSIONS
-
-
-def _sparse_vector(tokens: list[str]) -> list[dict[str, int]]:
-    counts: Counter[int] = Counter(_token_dimension(token) for token in tokens)
-    return [
-        {"dimension": dimension, "weight": counts[dimension]}
-        for dimension in sorted(counts)
-    ]
-
-
-def build_vector_index(workspace: Path, fingerprint: dict[str, Any] | None = None) -> dict[str, Any]:
-    _all, active = _validated_records(workspace)
-    fp = fingerprint or source_fingerprint(workspace)
+def _build_vector_from_active(
+    active: list[dict[str, Any]], fingerprint: dict[str, Any]
+) -> dict[str, Any]:
     records = []
     for record in active:
-        tokens = token_sequence(record_text(record))
-        records.append({
-            "memory_id": record["id"],
-            "token_count": len(tokens),
-            "vector": _sparse_vector(tokens),
-        })
+        tokens = legacy.token_sequence(legacy.record_text(record))
+        records.append(
+            {
+                "memory_id": record["id"],
+                "token_count": len(tokens),
+                "vector": legacy._sparse_vector(tokens),
+            }
+        )
     core_value = {
         "protocol": "AI-CONTEXT/VECTOR-INDEX",
         "schema_version": INDEX_VERSION,
         "index_kind": "vector",
         "authority": "derived-retrieval-only",
-        "source_fingerprint": fp,
+        "source_fingerprint": fingerprint,
         "generator": {
             "id": VECTOR_GENERATOR,
             "dimensions": VECTOR_DIMENSIONS,
@@ -205,24 +196,12 @@ def build_vector_index(workspace: Path, fingerprint: dict[str, Any] | None = Non
         },
         "records": records,
     }
-    return {"id": stable_id("vector-index", core_value), **core_value}
+    return {"id": legacy.stable_id("vector-index", core_value), **core_value}
 
 
-def _relationship_endpoint(content: dict[str, Any], side: str) -> tuple[str, str] | None:
-    memory_key = f"{side}_memory_id"
-    semantic_key = f"{side}_semantic_key"
-    memory = content.get(memory_key)
-    semantic = content.get(semantic_key)
-    if isinstance(memory, str) and memory and not semantic:
-        return "memory", memory
-    if isinstance(semantic, str) and semantic and not memory:
-        return "semantic_key", semantic
-    return None
-
-
-def build_graph_index(workspace: Path, fingerprint: dict[str, Any] | None = None) -> dict[str, Any]:
-    _all, active = _validated_records(workspace)
-    fp = fingerprint or source_fingerprint(workspace)
+def _build_graph_from_active(
+    active: list[dict[str, Any]], fingerprint: dict[str, Any]
+) -> dict[str, Any]:
     active_ids = {record["id"] for record in active}
     node_map: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
@@ -236,47 +215,63 @@ def build_graph_index(workspace: Path, fingerprint: dict[str, Any] | None = None
 
     for record in active:
         memory_node = f"memory:{record['id']}"
-        add_node(memory_node, {
-            "id": memory_node,
-            "kind": "memory",
-            "memory_id": record["id"],
-            "record_type": record["record_type"],
-            "sensitivity": record["sensitivity"],
-        })
+        add_node(
+            memory_node,
+            {
+                "id": memory_node,
+                "kind": "memory",
+                "memory_id": record["id"],
+                "record_type": record["record_type"],
+                "sensitivity": record["sensitivity"],
+            },
+        )
         for source_ref in sorted(record.get("source_refs", [])):
             node_id = f"observation:{source_ref}"
             add_node(node_id, {"id": node_id, "kind": "observation_ref", "ref": source_ref})
-            edges.append({
-                "from": memory_node,
-                "to": node_id,
-                "relation": "source_ref",
-                "relationship_memory_id": None,
-            })
+            edges.append(
+                {
+                    "from": memory_node,
+                    "to": node_id,
+                    "relation": "source_ref",
+                    "relationship_memory_id": None,
+                }
+            )
         lifecycle = record.get("lifecycle", {})
         supersedes = lifecycle.get("supersedes") if isinstance(lifecycle, dict) else None
         if isinstance(supersedes, str) and supersedes in active_ids:
-            edges.append({
-                "from": memory_node,
-                "to": f"memory:{supersedes}",
-                "relation": "supersedes",
-                "relationship_memory_id": None,
-            })
+            edges.append(
+                {
+                    "from": memory_node,
+                    "to": f"memory:{supersedes}",
+                    "relation": "supersedes",
+                    "relationship_memory_id": None,
+                }
+            )
 
     for record in active:
         if record.get("record_type") != "relationship":
             continue
         content = record.get("content")
         if not isinstance(content, dict):
-            unresolved.append({"memory_id": record["id"], "reason": "relationship-content-not-object"})
+            unresolved.append(
+                {"memory_id": record["id"], "reason": "relationship-content-not-object"}
+            )
             continue
         relation = content.get("relation")
         if not isinstance(relation, str) or not relation:
-            unresolved.append({"memory_id": record["id"], "reason": "relationship-name-missing"})
+            unresolved.append(
+                {"memory_id": record["id"], "reason": "relationship-name-missing"}
+            )
             continue
-        left = _relationship_endpoint(content, "from")
-        right = _relationship_endpoint(content, "to")
+        left = legacy._relationship_endpoint(content, "from")
+        right = legacy._relationship_endpoint(content, "to")
         if left is None or right is None:
-            unresolved.append({"memory_id": record["id"], "reason": "relationship-endpoint-ambiguous-or-missing"})
+            unresolved.append(
+                {
+                    "memory_id": record["id"],
+                    "reason": "relationship-endpoint-ambiguous-or-missing",
+                }
+            )
             continue
         endpoint_nodes: list[str] = []
         blocked = False
@@ -291,46 +286,63 @@ def build_graph_index(workspace: Path, fingerprint: dict[str, Any] | None = None
                 add_node(node_id, {"id": node_id, "kind": "semantic_key", "ref": value})
                 endpoint_nodes.append(node_id)
         if blocked:
-            unresolved.append({"memory_id": record["id"], "reason": "relationship-memory-endpoint-not-active"})
+            unresolved.append(
+                {
+                    "memory_id": record["id"],
+                    "reason": "relationship-memory-endpoint-not-active",
+                }
+            )
             continue
-        edges.append({
-            "from": endpoint_nodes[0],
-            "to": endpoint_nodes[1],
-            "relation": relation,
-            "relationship_memory_id": record["id"],
-        })
+        edges.append(
+            {
+                "from": endpoint_nodes[0],
+                "to": endpoint_nodes[1],
+                "relation": relation,
+                "relationship_memory_id": record["id"],
+            }
+        )
 
     nodes = [node_map[key] for key in sorted(node_map)]
-    edges = sorted(edges, key=lambda row: (row["from"], row["relation"], row["to"], row["relationship_memory_id"] or ""))
+    edges = sorted(
+        edges,
+        key=lambda row: (
+            row["from"],
+            row["relation"],
+            row["to"],
+            row["relationship_memory_id"] or "",
+        ),
+    )
     unresolved = sorted(unresolved, key=lambda row: (row["memory_id"], row["reason"]))
     core_value = {
         "protocol": "AI-CONTEXT/GRAPH-INDEX",
         "schema_version": INDEX_VERSION,
         "index_kind": "graph",
         "authority": "derived-retrieval-only",
-        "source_fingerprint": fp,
+        "source_fingerprint": fingerprint,
         "nodes": nodes,
         "edges": edges,
         "unresolved_relationships": unresolved,
     }
-    return {"id": stable_id("graph-index", core_value), **core_value}
+    return {"id": legacy.stable_id("graph-index", core_value), **core_value}
 
 
-def build_search_cache(workspace: Path, fingerprint: dict[str, Any] | None = None) -> dict[str, Any]:
-    _all, active = _validated_records(workspace)
-    fp = fingerprint or source_fingerprint(workspace)
+def _build_search_from_active(
+    active: list[dict[str, Any]], fingerprint: dict[str, Any]
+) -> dict[str, Any]:
     postings: dict[str, set[str]] = {}
     record_stats = []
     for record in active:
-        tokens = token_sequence(record_text(record))
+        tokens = legacy.token_sequence(legacy.record_text(record))
         unique = sorted(set(tokens))
         for token in unique:
             postings.setdefault(token, set()).add(record["id"])
-        record_stats.append({
-            "memory_id": record["id"],
-            "token_count": len(tokens),
-            "unique_token_count": len(unique),
-        })
+        record_stats.append(
+            {
+                "memory_id": record["id"],
+                "token_count": len(tokens),
+                "unique_token_count": len(unique),
+            }
+        )
     posting_rows = [
         {"token": token, "memory_ids": sorted(postings[token])}
         for token in sorted(postings)
@@ -340,61 +352,91 @@ def build_search_cache(workspace: Path, fingerprint: dict[str, Any] | None = Non
         "schema_version": INDEX_VERSION,
         "index_kind": "search",
         "authority": "derived-retrieval-only",
-        "source_fingerprint": fp,
+        "source_fingerprint": fingerprint,
         "tokenization": TOKENIZATION,
         "postings": posting_rows,
         "records": record_stats,
     }
-    return {"id": stable_id("search-cache", core_value), **core_value}
+    return {"id": legacy.stable_id("search-cache", core_value), **core_value}
 
 
-def _artifact_bytes(value: dict[str, Any]) -> bytes:
-    return core.canonical_bytes(value) + b"\n"
+def _check_optional_fingerprint(
+    supplied: dict[str, Any] | None, expected: dict[str, Any]
+) -> dict[str, Any]:
+    if supplied is None:
+        return expected
+    if core.canonical_bytes(supplied) != core.canonical_bytes(expected):
+        raise IndexError("supplied source fingerprint does not match the captured canonical snapshot")
+    return supplied
 
 
-def build_manifest(fingerprint: dict[str, Any], artifacts: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    rows = []
-    for kind in ("vector", "graph", "search"):
-        value = artifacts[kind]
-        rows.append({
-            "kind": kind,
-            "path": INDEX_FILES[kind],
-            "artifact_id": value["id"],
-            "sha256": core.sha256_bytes(_artifact_bytes(value)),
-            "bytes": len(_artifact_bytes(value)),
-        })
-    core_value = {
-        "protocol": "AI-CONTEXT/INDEX-MANIFEST",
-        "schema_version": INDEX_VERSION,
-        "authority": "derived-retrieval-only",
-        "source_fingerprint": fingerprint,
-        "artifacts": rows,
+def build_vector_index(
+    workspace: Path, fingerprint: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    workspace = workspace.expanduser().resolve()
+    _raw, _records, active, expected = _capture_records_snapshot(workspace)
+    return _build_vector_from_active(active, _check_optional_fingerprint(fingerprint, expected))
+
+
+def build_graph_index(
+    workspace: Path, fingerprint: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    workspace = workspace.expanduser().resolve()
+    _raw, _records, active, expected = _capture_records_snapshot(workspace)
+    return _build_graph_from_active(active, _check_optional_fingerprint(fingerprint, expected))
+
+
+def build_search_cache(
+    workspace: Path, fingerprint: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    workspace = workspace.expanduser().resolve()
+    _raw, _records, active, expected = _capture_records_snapshot(workspace)
+    return _build_search_from_active(active, _check_optional_fingerprint(fingerprint, expected))
+
+
+def _build_from_snapshot(
+    active: list[dict[str, Any]], fingerprint: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    artifacts = {
+        "vector": _build_vector_from_active(active, fingerprint),
+        "graph": _build_graph_from_active(active, fingerprint),
+        "search": _build_search_from_active(active, fingerprint),
     }
-    return {"id": stable_id("index-manifest", core_value), **core_value}
+    manifest = legacy.build_manifest(fingerprint, artifacts)
+    return manifest, artifacts
 
 
 def _build_all(workspace: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
-    fp = source_fingerprint(workspace)
-    artifacts = {
-        "vector": build_vector_index(workspace, fp),
-        "graph": build_graph_index(workspace, fp),
-        "search": build_search_cache(workspace, fp),
-    }
-    manifest = build_manifest(fp, artifacts)
-    return manifest, artifacts
+    workspace = workspace.expanduser().resolve()
+    _raw, _records, active, fingerprint = _capture_records_snapshot(workspace)
+    return _build_from_snapshot(active, fingerprint)
 
 
 def build_indexes(workspace: Path) -> dict[str, Any]:
     workspace = workspace.expanduser().resolve()
+
+    # Validate the workspace before any privacy metadata is changed, then establish the
+    # ignore boundary before generating private projection bytes.
+    core.ensure_workspace(workspace)
     _ensure_private_index_path(workspace)
-    manifest, artifacts = _build_all(workspace)
+
+    memory_raw, _records, active, fingerprint = _capture_records_snapshot(workspace)
+    manifest, artifacts = _build_from_snapshot(active, fingerprint)
+
     temp = Path(tempfile.mkdtemp(prefix=".indexes-build-", dir=workspace))
     backup: Path | None = None
     index_dir = workspace / INDEX_DIR
     try:
         for kind in ("vector", "graph", "search"):
-            _write_json(temp / INDEX_FILES[kind], artifacts[kind])
-        _write_json(temp / INDEX_FILES["manifest"], manifest)
+            legacy._write_json(temp / INDEX_FILES[kind], artifacts[kind])
+        legacy._write_json(temp / INDEX_FILES["manifest"], manifest)
+
+        # A canonical mutation during projection construction invalidates this build before
+        # the old index set is touched. All projections above came from the same in-memory
+        # snapshot, and that exact snapshot must still be current at publication time.
+        if _memory_file_bytes(workspace) != memory_raw:
+            raise IndexError("canonical memory changed during index build; rebuild from a fresh snapshot")
+
         if index_dir.exists():
             if not index_dir.is_dir() or index_dir.is_symlink():
                 raise IndexError("indexes path must be a normal directory")
@@ -409,11 +451,12 @@ def build_indexes(workspace: Path) -> dict[str, Any]:
             raise
         if backup is not None and backup.exists():
             shutil.rmtree(backup)
+
         return {
             "status": "ok",
             "manifest_id": manifest["id"],
-            "source_fingerprint_id": manifest["source_fingerprint"]["id"],
-            "retrieval_records": manifest["source_fingerprint"]["retrieval_record_count"],
+            "source_fingerprint_id": fingerprint["id"],
+            "retrieval_records": fingerprint["retrieval_record_count"],
             "vector_records": len(artifacts["vector"]["records"]),
             "graph_nodes": len(artifacts["graph"]["nodes"]),
             "graph_edges": len(artifacts["graph"]["edges"]),
@@ -424,85 +467,122 @@ def build_indexes(workspace: Path) -> dict[str, Any]:
             shutil.rmtree(temp, ignore_errors=True)
 
 
-def _require_exact_fields(value: dict[str, Any], fields: set[str], label: str) -> None:
-    if set(value) != fields:
-        raise IndexError(f"{label} has missing/unknown fields")
-
-
-def _validate_source_fingerprint(value: Any) -> dict[str, Any]:
+def _read_canonical_json_bytes(path: Path) -> tuple[bytes, dict[str, Any]]:
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise IndexError(f"cannot read index artifact {path}: {exc}") from exc
+    try:
+        value = core.json_loads_strict(raw.decode("utf-8"), label=str(path))
+    except UnicodeDecodeError as exc:
+        raise IndexError(f"index artifact must be UTF-8 JSON: {path}") from exc
     if not isinstance(value, dict):
-        raise IndexError("source_fingerprint must be an object")
-    fields = {
-        "id", "protocol", "schema_version", "canonicalizer", "retrieval_policy",
-        "canonical_store_sha256", "canonical_record_count", "retrieval_records_sha256",
-        "retrieval_record_count",
-    }
-    _require_exact_fields(value, fields, "source_fingerprint")
-    if value.get("protocol") != "AI-CONTEXT/DERIVED-SOURCE-FINGERPRINT":
-        raise IndexError("invalid source fingerprint protocol")
-    if value.get("schema_version") != INDEX_VERSION:
-        raise IndexError("unsupported source fingerprint schema")
-    if value.get("canonicalizer") != "python-json-v0.1" or value.get("retrieval_policy") != RETRIEVAL_POLICY:
-        raise IndexError("unsupported source fingerprint policy")
-    core_value = {key: item for key, item in value.items() if key != "id"}
-    if value.get("id") != stable_id("index-source", core_value):
-        raise IndexError("source fingerprint id/hash mismatch")
-    return value
+        raise IndexError(f"index artifact must be an object: {path}")
+    if raw != core.canonical_bytes(value) + b"\n":
+        raise IndexError(f"index artifact is not in canonical byte encoding: {path.name}")
+    return raw, value
 
 
-def _validate_artifact_identity(value: dict[str, Any], protocol: str, prefix: str, kind: str) -> None:
-    if value.get("protocol") != protocol or value.get("schema_version") != INDEX_VERSION:
-        raise IndexError(f"invalid {kind} index protocol/schema")
-    if value.get("index_kind") != kind or value.get("authority") != "derived-retrieval-only":
-        raise IndexError(f"invalid {kind} index authority/kind")
-    _validate_source_fingerprint(value.get("source_fingerprint"))
-    core_value = {key: item for key, item in value.items() if key != "id"}
-    if value.get("id") != stable_id(prefix, core_value):
-        raise IndexError(f"{kind} index id/hash mismatch")
+def _index_dir_identity(path: Path) -> tuple[int, int]:
+    stat_result = path.stat()
+    return stat_result.st_dev, stat_result.st_ino
 
 
-def validate_indexes(workspace: Path) -> dict[str, Any]:
-    workspace = workspace.expanduser().resolve()
+def _load_index_snapshot(
+    workspace: Path,
+) -> tuple[dict[str, bytes], dict[str, dict[str, Any]]]:
     index_dir = workspace / INDEX_DIR
     if not index_dir.is_dir() or index_dir.is_symlink():
         raise IndexError("derived indexes are missing or unsafe; rebuild them")
-    actual_files = {path.name for path in index_dir.iterdir() if path.is_file()}
+
+    before = _index_dir_identity(index_dir)
+    entries = list(index_dir.iterdir())
+    if any(path.is_symlink() for path in entries):
+        raise IndexError("derived index files must not be symlinks")
+    if any(not path.is_file() for path in entries):
+        raise IndexError("derived indexes directory contains a non-file entry")
+    actual_files = {path.name for path in entries}
     expected_files = set(INDEX_FILES.values())
     if actual_files != expected_files:
-        raise IndexError(f"derived index file set mismatch: expected={sorted(expected_files)} actual={sorted(actual_files)}")
+        raise IndexError(
+            f"derived index file set mismatch: expected={sorted(expected_files)} "
+            f"actual={sorted(actual_files)}"
+        )
 
-    vector = _read_json(index_dir / INDEX_FILES["vector"])
-    graph = _read_json(index_dir / INDEX_FILES["graph"])
-    search = _read_json(index_dir / INDEX_FILES["search"])
-    manifest = _read_json(index_dir / INDEX_FILES["manifest"])
+    raw_by_kind: dict[str, bytes] = {}
+    value_by_kind: dict[str, dict[str, Any]] = {}
+    for kind in ("vector", "graph", "search", "manifest"):
+        raw, value = _read_canonical_json_bytes(index_dir / INDEX_FILES[kind])
+        raw_by_kind[kind] = raw
+        value_by_kind[kind] = value
 
-    _validate_artifact_identity(vector, "AI-CONTEXT/VECTOR-INDEX", "vector-index", "vector")
-    _validate_artifact_identity(graph, "AI-CONTEXT/GRAPH-INDEX", "graph-index", "graph")
-    _validate_artifact_identity(search, "AI-CONTEXT/SEARCH-CACHE", "search-cache", "search")
-    if manifest.get("protocol") != "AI-CONTEXT/INDEX-MANIFEST" or manifest.get("schema_version") != INDEX_VERSION:
+    if _index_dir_identity(index_dir) != before:
+        raise IndexError("derived index set changed during validation")
+    return raw_by_kind, value_by_kind
+
+
+def _validate_index_snapshot(
+    workspace: Path,
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    workspace = workspace.expanduser().resolve()
+    core.ensure_workspace(workspace)
+    raw, values = _load_index_snapshot(workspace)
+    vector = values["vector"]
+    graph = values["graph"]
+    search = values["search"]
+    manifest = values["manifest"]
+
+    legacy._validate_artifact_identity(
+        vector, "AI-CONTEXT/VECTOR-INDEX", "vector-index", "vector"
+    )
+    legacy._validate_artifact_identity(
+        graph, "AI-CONTEXT/GRAPH-INDEX", "graph-index", "graph"
+    )
+    legacy._validate_artifact_identity(
+        search, "AI-CONTEXT/SEARCH-CACHE", "search-cache", "search"
+    )
+    if (
+        manifest.get("protocol") != "AI-CONTEXT/INDEX-MANIFEST"
+        or manifest.get("schema_version") != INDEX_VERSION
+    ):
         raise IndexError("invalid index manifest protocol/schema")
     if manifest.get("authority") != "derived-retrieval-only":
         raise IndexError("index manifest claims invalid authority")
-    _validate_source_fingerprint(manifest.get("source_fingerprint"))
+    legacy._validate_source_fingerprint(manifest.get("source_fingerprint"))
     manifest_core = {key: item for key, item in manifest.items() if key != "id"}
-    if manifest.get("id") != stable_id("index-manifest", manifest_core):
+    if manifest.get("id") != legacy.stable_id("index-manifest", manifest_core):
         raise IndexError("index manifest id/hash mismatch")
 
-    artifacts = {"vector": vector, "graph": graph, "search": search}
-    expected_manifest = build_manifest(manifest["source_fingerprint"], artifacts)
-    if core.canonical_bytes(expected_manifest) != core.canonical_bytes(manifest):
-        raise IndexError("index manifest does not match artifact identities/hashes")
+    rows = manifest.get("artifacts")
+    if not isinstance(rows, list) or len(rows) != 3:
+        raise IndexError("index manifest artifact list is invalid")
+    row_by_kind = {
+        row.get("kind"): row for row in rows if isinstance(row, dict) and isinstance(row.get("kind"), str)
+    }
+    if set(row_by_kind) != {"vector", "graph", "search"}:
+        raise IndexError("index manifest artifact kinds are incomplete or duplicated")
+    for kind in ("vector", "graph", "search"):
+        row = row_by_kind[kind]
+        if row.get("path") != INDEX_FILES[kind] or row.get("artifact_id") != values[kind].get("id"):
+            raise IndexError(f"index manifest {kind} identity/path mismatch")
+        if row.get("sha256") != core.sha256_bytes(raw[kind]) or row.get("bytes") != len(raw[kind]):
+            raise IndexError(f"index manifest {kind} hash/byte-length mismatch")
 
-    fresh_manifest, expected = _build_all(workspace)
-    if core.canonical_bytes(fresh_manifest["source_fingerprint"]) != core.canonical_bytes(manifest["source_fingerprint"]):
+    # Build the expected projections from one exact canonical snapshot and ensure that same
+    # canonical byte snapshot remains current through the end of validation.
+    memory_raw, _records, active, fingerprint = _capture_records_snapshot(workspace)
+    expected_manifest, expected = _build_from_snapshot(active, fingerprint)
+    if core.canonical_bytes(fingerprint) != core.canonical_bytes(manifest["source_fingerprint"]):
         raise IndexError("derived indexes are stale for the current canonical memory store")
     for kind in ("vector", "graph", "search"):
-        if core.canonical_bytes(expected[kind]) != core.canonical_bytes(artifacts[kind]):
+        if core.canonical_bytes(expected[kind]) != core.canonical_bytes(values[kind]):
             raise IndexError(f"{kind} index does not match the deterministic current projection")
-    if core.canonical_bytes(fresh_manifest) != core.canonical_bytes(manifest):
+    if core.canonical_bytes(expected_manifest) != core.canonical_bytes(manifest):
         raise IndexError("index manifest is stale or inconsistent")
+    if _memory_file_bytes(workspace) != memory_raw:
+        raise IndexError("canonical memory changed during index validation")
 
-    return {
+    summary = {
         "status": "ok",
         "manifest_id": manifest["id"],
         "source_fingerprint_id": manifest["source_fingerprint"]["id"],
@@ -512,6 +592,12 @@ def validate_indexes(workspace: Path) -> dict[str, Any]:
         "graph_edges": len(graph["edges"]),
         "search_terms": len(search["postings"]),
     }
+    return summary, {"vector": vector, "graph": graph, "search": search, "manifest": manifest}
+
+
+def validate_indexes(workspace: Path) -> dict[str, Any]:
+    summary, _values = _validate_index_snapshot(workspace)
+    return summary
 
 
 def search_cache(workspace: Path, query: str, *, limit: int = 10) -> dict[str, Any]:
@@ -519,9 +605,10 @@ def search_cache(workspace: Path, query: str, *, limit: int = 10) -> dict[str, A
         raise IndexError("search query must be non-empty")
     if limit < 1 or limit > 100:
         raise IndexError("search limit must be from 1 to 100")
-    validation = validate_indexes(workspace)
-    cache = _read_json(workspace.expanduser().resolve() / INDEX_DIR / INDEX_FILES["search"])
-    terms = sorted(set(token_sequence(query)))
+
+    validation, values = _validate_index_snapshot(workspace)
+    cache = values["search"]
+    terms = sorted(set(legacy.token_sequence(query)))
     if not terms:
         raise IndexError("search query produced no meaningful terms")
     posting_map = {row["token"]: row["memory_ids"] for row in cache["postings"]}
@@ -536,7 +623,11 @@ def search_cache(workspace: Path, query: str, *, limit: int = 10) -> dict[str, A
         "status": "ok",
         "query_terms": terms,
         "results": [
-            {"memory_id": memory_id, "score": scores[memory_id], "matched_terms": sorted(matches[memory_id])}
+            {
+                "memory_id": memory_id,
+                "score": scores[memory_id],
+                "matched_terms": sorted(matches[memory_id]),
+            }
             for memory_id in ranked
         ],
         "source_fingerprint_id": validation["source_fingerprint_id"],
@@ -545,22 +636,20 @@ def search_cache(workspace: Path, query: str, *, limit: int = 10) -> dict[str, A
     }
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="AI-CONTEXT Phase 9 derived indexes")
-    sub = parser.add_subparsers(dest="command", required=True)
-    build = sub.add_parser("build", help="rebuild deterministic vector/graph/search projections")
-    build.add_argument("workspace")
-    validate = sub.add_parser("validate", help="validate freshness and deterministic projection equality")
-    validate.add_argument("workspace")
-    search = sub.add_parser("search", help="query the validated lexical search cache")
-    search.add_argument("workspace")
-    search.add_argument("query")
-    search.add_argument("--limit", type=int, default=10)
-    return parser
+# Make compatibility callers that import indexes_legacy through this process see the hardened
+# public behavior as well.
+legacy.source_fingerprint = source_fingerprint
+legacy.build_vector_index = build_vector_index
+legacy.build_graph_index = build_graph_index
+legacy.build_search_cache = build_search_cache
+legacy._build_all = _build_all
+legacy.build_indexes = build_indexes
+legacy.validate_indexes = validate_indexes
+legacy.search_cache = search_cache
 
 
 def main() -> int:
-    args = build_parser().parse_args()
+    args = legacy.build_parser().parse_args()
     try:
         workspace = Path(args.workspace).expanduser().resolve()
         if args.command == "build":
@@ -572,7 +661,7 @@ def main() -> int:
         else:
             raise IndexError(f"unsupported index command: {args.command}")
     except (IndexError, core.ContextError, OSError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(f"error: {exc}", file=os.sys.stderr)
         return 2
     print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False))
     return 0
