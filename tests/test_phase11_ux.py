@@ -48,6 +48,10 @@ def tree_snapshot(root: Path):
     return result
 
 
+def optional_bytes(path: Path):
+    return path.read_bytes() if path.exists() else None
+
+
 class Phase11UXTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -121,7 +125,7 @@ class Phase11UXTests(unittest.TestCase):
     def test_review_and_application_remain_separate_authority_events(self):
         candidate = self.propose("two-step-review")
         memory_path = self.workspace / "memory" / "records.jsonl"
-        before_memory = memory_path.read_bytes()
+        before_memory = optional_bytes(memory_path)
 
         failed_review = run_cli(
             UX, "review", self.workspace,
@@ -130,7 +134,7 @@ class Phase11UXTests(unittest.TestCase):
             expect=2,
         )
         self.assertIn("--yes", failed_review.stderr)
-        self.assertEqual(memory_path.read_bytes(), before_memory)
+        self.assertEqual(optional_bytes(memory_path), before_memory)
 
         reviewed = json.loads(run_cli(
             UX, "review", self.workspace,
@@ -139,17 +143,17 @@ class Phase11UXTests(unittest.TestCase):
             "--yes",
         ).stdout)
         self.assertEqual(reviewed["decision"], "approve")
-        self.assertEqual(memory_path.read_bytes(), before_memory)
+        self.assertEqual(optional_bytes(memory_path), before_memory)
 
         failed_apply = run_cli(UX, "apply", self.workspace, "--candidate", candidate, expect=2)
         self.assertIn("--yes", failed_apply.stderr)
-        self.assertEqual(memory_path.read_bytes(), before_memory)
+        self.assertEqual(optional_bytes(memory_path), before_memory)
 
         applied = json.loads(run_cli(
             UX, "apply", self.workspace, "--candidate", candidate, "--yes"
         ).stdout)
         self.assertTrue(applied["memory_appended"])
-        self.assertNotEqual(memory_path.read_bytes(), before_memory)
+        self.assertNotEqual(optional_bytes(memory_path), before_memory)
 
     def test_conflict_explorer_is_read_only_and_does_not_persist_conflict_rows(self):
         self.create_memory("conflict-old", semantic_key="claim:phase11-conflict")
