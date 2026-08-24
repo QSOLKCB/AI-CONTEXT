@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/release-audit.schema.json",
+  "title": "AI-CONTEXT Release Audit Receipt",
+  "type": "object",
+  "required": [
+    "protocol",
+    "schema_version",
+    "audit_scope",
+    "git_commit",
+    "tracked_files",
+    "tracked_bytes",
+    "tracked_tree_sha256",
+    "categories_checked",
+    "findings",
+    "status",
+    "claim",
+    "limitations"
+  ],
+  "properties": {
+    "protocol": {"const": "AI-CONTEXT/RELEASE-AUDIT"},
+    "schema_version": {"const": "0.1.0"},
+    "audit_scope": {"const": "tracked-public-git-tree"},
+    "git_commit": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        {"type": "null"}
+      ]
+    },
+    "tracked_files": {"type": "integer", "minimum": 0},
+    "tracked_bytes": {"type": "integer", "minimum": 0},
+    "tracked_tree_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "categories_checked": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "path", "detail"],
+        "properties": {
+          "kind": {"type": "string", "minLength": 1},
+          "path": {"type": "string"},
+          "detail": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "status": {"enum": ["ok", "failed"]},
+    "claim": {"type": "string", "minLength": 1},
+    "limitations": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false
+}
