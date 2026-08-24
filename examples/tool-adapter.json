@@ -1,0 +1,31 @@
+{
+  "protocol": "AI-CONTEXT/TOOL-ADAPTER-EXAMPLE",
+  "schema_version": "0.1.0",
+  "authority": "transport-example-only",
+  "operations": {
+    "capabilities": {
+      "read_only": true,
+      "command": ["python3", "tools/interop.py", "capabilities"]
+    },
+    "search_candidates": {
+      "read_only": true,
+      "command_template": ["python3", "tools/indexes.py", "search", "{workspace}", "{query}", "--limit", "{limit}"],
+      "result_authority": "candidate-retrieval-only",
+      "requires_routing_before_disclosure": true
+    },
+    "validate_routed_bundle": {
+      "read_only": true,
+      "command_template": ["python3", "tools/validate_routing.py", "{workspace}", "--bundle", "{bundle}"]
+    },
+    "verify_signed_bundle": {
+      "read_only": true,
+      "command_template": ["python3", "tools/interop.py", "verify-receipt", "{bundle}", "{receipt}"],
+      "result_authority": "integrity-attestation-only"
+    }
+  },
+  "authority_rules": {
+    "tool_call_grants_memory_authority": false,
+    "tool_call_grants_disclosure_authority": false,
+    "signature_grants_epistemic_authority": false
+  }
+}
