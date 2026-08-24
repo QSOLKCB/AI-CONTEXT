@@ -62,13 +62,19 @@ python3 tools/ux.py import \
 
 Provider-specific and evidence-oriented importers are also available. See the root README and the provider/evidence documentation for those paths.
 
-The import result contains observation identifiers such as:
+The public UX import result includes the newly staged observation handles:
 
-```text
-obs.sha256:...
+```json
+{
+  "observation_ids": [
+    "obs.sha256:..."
+  ]
+}
 ```
 
-These are staged evidence, not canonical memory.
+Copy the relevant `obs.sha256:...` value into the next `curation.py propose` command. These identifiers point to staged evidence only. Reporting them does not approve, apply, or disclose anything.
+
+If an import is idempotent and adds no new observation rows, `observation_ids` may be empty because no new observation was appended.
 
 ## 5. Propose a memory candidate
 
@@ -109,9 +115,9 @@ python3 tools/curation.py apply \
   --candidate candidate.sha256:...
 ```
 
-Only an explicitly approved and applied candidate becomes canonical memory.
+Only an explicitly approved **and separately applied** candidate becomes canonical memory.
 
-## 7. Preview exactly what a model would receive
+## 7. Preview exactly what a local model would receive
 
 Previewing is read-only and does not create a disclosure bundle:
 
@@ -125,9 +131,11 @@ python3 tools/ux.py inspect-bundle \
 
 The preview shows the exact routed payload under the current profile and disclosure policy.
 
-## 8. Write a routed bundle
+`local-default` is a **local-model target**. Its default sensitivity ceiling can permit private records. Do not use a `local-default` preview or bundle as permission to send those bytes to an external provider.
 
-When you actually need a context file for a model or agent:
+## 8. Write a routed bundle for the intended consumer
+
+For a local model or local agent:
 
 ```bash
 python3 tools/ai_context.py bundle \
@@ -135,24 +143,37 @@ python3 tools/ai_context.py bundle \
   --profile general \
   --target local-default \
   --task "continue work on the example project" \
-  --output /tmp/ai-context-bundle.json
+  --output /tmp/local-ai-context-bundle.json
 ```
 
-For an external provider, use the configured provider target instead. Default provider policy is intentionally stricter than the default local-model policy.
+That file is for the matching local-consumer policy only.
+
+For an external provider, **route again using the provider target** rather than reusing the local bundle:
+
+```bash
+python3 tools/ai_context.py bundle \
+  ~/my-ai-context \
+  --profile general \
+  --target provider-default \
+  --task "continue work on the example project" \
+  --output /tmp/provider-ai-context-bundle.json
+```
+
+The default provider policy is intentionally stricter than the default local-model policy. Transport does not re-run routing, so the target used when building the bundle matters.
 
 A routed bundle is a task-scoped projection. It is not a second canonical memory store.
 
-## 9. Give the bundle to your model or agent
+## 9. Give the matching bundle to the matching consumer
 
-How you deliver `/tmp/ai-context-bundle.json` depends on the consumer:
+How you deliver a routed bundle depends on the consumer:
 
-- attach it to a chat that accepts files;
-- put its contents into a system/developer context field;
-- load it in a local agent/runtime;
+- attach the **provider-targeted** bundle to a compatible external chat that accepts files;
+- load the **local-targeted** bundle in the matching local agent/runtime;
+- put the correctly targeted bundle into a system/developer context field;
 - use a read-only tool/MCP integration;
-- pass it through your own transport adapter.
+- pass the correctly targeted bundle through your own transport adapter.
 
-AI-CONTEXT does not require a specific model vendor or runtime.
+AI-CONTEXT does not require a specific model vendor or runtime. It does require that disclosure routing be performed for the actual target receiving the bytes.
 
 ## 10. Back up and restore
 
