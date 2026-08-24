@@ -16,7 +16,7 @@ TARGET_TAG = "v1.0.0"
 TARGET_COMMIT = "53d7d69dfacecf6f8605f5b6a51b2c68ee66572a"
 TARGET_TREE = "2c0592cbd074d7596e70681cc5ed869d6b9b00e4"
 
-THEOREM_RE = re.compile(r"\btheorem\s+([A-Za-z_][A-Za-z0-9_']*)")
+THEOREM_RE = re.compile(r"(?m)^\s*theorem\s+([A-Za-z_][A-Za-z0-9_']*)")
 FORBIDDEN_PROOF_RE = re.compile(r"\b(sorry|admit|axiom)\b")
 
 
