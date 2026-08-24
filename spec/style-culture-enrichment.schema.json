@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/style-culture-enrichment.schema.json",
+  "title": "AI-CONTEXT Style/Culture Enrichment",
+  "type": "object",
+  "required": ["protocol", "schema_version", "class", "factual_authority", "apply_scope", "entries"],
+  "properties": {
+    "protocol": {"const": "AI-CONTEXT/STYLE-CULTURE-ENRICHMENT"},
+    "schema_version": {"const": "0.1.0"},
+    "class": {"const": "style_culture"},
+    "factual_authority": {"const": "none"},
+    "apply_scope": {"const": "presentation_only"},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "value", "tags"],
+        "properties": {
+          "label": {"type": "string", "minLength": 1},
+          "value": {"type": "string"},
+          "tags": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Optional non-authoritative enrichment metadata."
+    }
+  },
+  "additionalProperties": false
+}
