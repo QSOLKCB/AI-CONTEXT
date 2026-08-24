@@ -237,7 +237,7 @@ def _path_findings(rel: str) -> list[dict[str, str]]:
 def _synthetic_context(path: str, line: bytes) -> bool:
     if not (path.startswith("tests/") or path.startswith("fixtures/")):
         return False
-    folded = line.casefold()
+    folded = line.lower()
     return any(marker in folded for marker in SYNTHETIC_ANNOTATIONS)
 
 
