@@ -97,12 +97,18 @@ No automated semantic extractor or local LLM may write directly to canonical mem
 
 - [x] Profile format and default `general` profile.
 - [x] Tag selector.
-- [ ] Task/semantic selector.
+- [x] Task/semantic selector.
 - [x] Sensitivity ceiling.
-- [ ] Provider/local-model disclosure policy.
-- [ ] Hard exclusions beyond sensitivity/tag policy.
-- [ ] Dependency expansion with fail-closed ambiguity handling.
-- [ ] Minimum-context diagnostics explaining why each record entered a bundle.
+- [x] Provider/local-model disclosure policy.
+- [x] Hard exclusions beyond sensitivity/tag policy.
+- [x] Dependency expansion with fail-closed ambiguity handling.
+- [x] Minimum-context diagnostics explaining why each record entered a bundle.
+
+**Phase 6 complete.** `tools/routing.py` turns the public `bundle` command into a deterministic disclosure router. Profiles combine record-type/tag/sensitivity policy with lexical task selection and explicit semantic aliases. `routing/policy.json` defines separate provider and local-model targets, confidence/verification gates, optional Phase 5 application requirements, and hard exclusions for record ids/types, epistemic states, source observations, and exact content paths. Required dependencies are declared by active canonical `relationship` records using `depends_on` or `requires`; exact memory endpoints resolve directly while semantic-key endpoints must resolve to exactly one active record or routing fails closed. Dependency expansion bypasses only positive relevance selectors and never bypasses approval, lifecycle, sensitivity, target policy, or hard exclusions. Routed bundles carry deterministic per-record diagnostics explaining direct tag/task selection and dependency inclusion without listing withheld records. `tools/validate_routing.py` recomputes routing decisions and rejects stale or policy-divergent bundles.
+
+### Disclosure security gate
+
+Routing is a read-only projection over canonical memory. Task selection and dependency expansion may establish relevance, but they never grant disclosure permission. A required dependency that violates the profile, target, sensitivity, lifecycle, approval, or hard-exclusion boundary causes bundle construction to fail instead of silently leaking or silently omitting required context.
 
 ## Phase 7 — Encrypted storage boundary
 
