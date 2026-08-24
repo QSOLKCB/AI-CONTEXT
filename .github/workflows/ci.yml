@@ -34,6 +34,7 @@ jobs:
           tools/routing.py
           tools/validate_routing.py
           tools/storage.py
+          tools/restore_legacy.py
           tools/restore.py
           tests/test_ai_context.py
           tests/test_phase2_conformance.py
@@ -44,5 +45,6 @@ jobs:
           tests/test_phase6_routing.py
           tests/test_phase7_storage.py
           tests/test_phase8_restore.py
+          tests/test_phase8_codex_hardening.py
       - name: Unit, security, schema, provider-drift, evidence, curation, routing, storage, and restore tests
         run: python -m unittest discover -s tests -v
