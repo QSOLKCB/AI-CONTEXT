@@ -50,6 +50,11 @@ These rules are normative for AI-assisted changes to this repository.
 - MCP/generic tool adapters are transport surfaces. `MCP TOOL != MEMORY AUTHORITY`; tool availability must never bypass curation or routing.
 - The Rust interoperability verifier is a read-only independent consumer. Cross-language agreement does not create a second canonical authority.
 - RFC 8785 JCS is evaluated but not active in v0.1. Never silently change `python-json-v0.1` identities while advertising the old canonicalizer.
+- Phase 11 UX is orchestration only. `TUI ACTION != AUTHORITY`, `PREVIEW != DISCLOSURE`, `INSPECTOR != MUTATION`, and `ONE-COMMAND FLOW != BYPASS`.
+- Read-only UX paths must never initialize, upgrade, repair, or otherwise mutate routing, curation, profiles, indexes, or canonical memory.
+- UX review and canonical application remain separate authority events. A convenience prompt may not collapse approval and application into one write.
+- Operator-facing “promotion” means governed Phase 5 application of an already approved candidate; the legacy direct promote path remains disabled.
+- Non-interactive UX writes require explicit confirmation (`--yes`) before any mutation or archive creation.
 - Do not claim cross-runtime canonical byte equivalence beyond the explicit language-neutral conformance corpus.
 - Restore means reconstruction of curated context, not recreation of a model identity or hidden provider state.
 
@@ -62,7 +67,7 @@ These rules are normative for AI-assisted changes to this repository.
 - Storage logical paths must reject traversal and absolute-path escape.
 - Restore export must reject symlinked source artifacts; restore destinations must be assembled off-path and published only after complete validation.
 - New import adapters require synthetic fixtures and format-drift failure tests.
-- Changes to canonicalization, ids, schemas, sensitivity semantics, promotion rules, curation authority, mutation semantics, routing policy, dependency expansion, disclosure diagnostics, storage envelopes, key metadata, deletion/erasure semantics, restore manifests, continuity classes, migration rules, enrichment authority, index source fingerprints, index membership policy, index generator identity, signed-receipt preimages/algorithms, or capability security semantics require protocol/migration review.
+- Changes to canonicalization, ids, schemas, sensitivity semantics, promotion rules, curation authority, mutation semantics, routing policy, dependency expansion, disclosure diagnostics, storage envelopes, key metadata, deletion/erasure semantics, restore manifests, continuity classes, migration rules, enrichment authority, index source fingerprints, index membership policy, index generator identity, signed-receipt preimages/algorithms, capability security semantics, or UX authority semantics require protocol/migration review.
 - Curation write paths must be explicit and fail closed when approval, provenance, conflict resolution, or actor authority is ambiguous.
 - Routing must fail closed when a required dependency cannot be disclosed to the selected target.
 - Routing policy/profile normalization must reject unknown fields rather than ignoring policy typos.
@@ -76,6 +81,9 @@ These rules are normative for AI-assisted changes to this repository.
 - Signed-receipt verification must distinguish embedded-key cryptographic validity from an independently supplied public-key trust anchor.
 - Signing key creation must use exclusive-create semantics and must never overwrite an existing key path.
 - MCP/tool adapter examples must use structured arguments and remain read-only unless a future authority-reviewed tool contract explicitly says otherwise.
+- UX read-only functions must use read-only planners/readers and must not call bootstrap helpers that create or upgrade workspace state.
+- UX mutating functions should delegate to the established protocol CLIs/functions rather than duplicate curation, routing, import, or restore write semantics.
+- UX bundle previews must expose the exact routed payload and must not write preview bundle files unless the user explicitly requests a separate future feature.
 - Security-sensitive behavior must fail closed.
 
 ## Test expectations
@@ -134,4 +142,11 @@ At minimum preserve tests for:
 - signing private keys require restrictive permissions on POSIX;
 - MCP/generic tool examples expose no direct canonical-memory or approval write path;
 - RFC 8785 JCS remains explicitly non-adopted unless a versioned migration changes that decision;
+- Phase 11 read-only status/provenance/bundle inspection leaves workspace bytes unchanged;
+- non-interactive UX mutations fail without explicit confirmation;
+- UX review approval does not itself append canonical memory;
+- UX conflict inspection does not persist conflict rows;
+- exact bundle inspection cannot bypass provider/local routing policy and does not create a bundle file;
+- UX backup/restore delegates to Phase 8 and round-trips canonical continuity;
+- read-only TUI sessions leave workspace state unchanged;
 - deletion/tombstone propagation once lifecycle mutation lands.
