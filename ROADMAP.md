@@ -177,17 +177,22 @@ Indexes are retrieval accelerators only. `INDEX HIT != MEMORY AUTHORITY`, `INDEX
 
 ## Phase 11 — UX
 
-- [ ] Local TUI for imports, review, promotion, conflicts, and bundle previews.
-- [ ] Read-only provenance explorer.
-- [ ] “Show me exactly what this AI will receive” bundle inspector.
-- [ ] One-command export/restore flow.
-- [ ] Safe defaults for non-programmers.
+- [x] Local TUI for imports, review, promotion, conflicts, and bundle previews.
+- [x] Read-only provenance explorer.
+- [x] “Show me exactly what this AI will receive” bundle inspector.
+- [x] One-command export/restore flow.
+- [x] Safe defaults for non-programmers.
+
+**Phase 11 complete.** `tools/ux.py` provides a dependency-free line-oriented local TUI plus scriptable operator commands for status, imports, candidate queue/review/application, conflict inspection, provenance, exact bundle inspection, backup, and restore. Read-only UX paths do not initialize or upgrade governance state and do not create preview bundles. The exact bundle inspector uses the Phase 10 read-only planner and exposes the deterministic payload a selected target would receive under current Phase 6 policy. Non-interactive writes require `--yes`; the TUI requires typing `YES` immediately before writes. Human review and canonical application remain separate authority events with separate confirmations. `backup` and `restore` delegate to the Phase 8 `.aicr` implementation rather than defining a UX-specific continuity format. In operator-facing language, “promotion” means governed Phase 5 application of an already approved candidate; the legacy direct promote path remains disabled.
+
+### UX security gate
+
+`TUI ACTION != AUTHORITY`, `PREVIEW != DISCLOSURE`, `INSPECTOR != MUTATION`, and `ONE-COMMAND FLOW != BYPASS`. UX convenience code may orchestrate existing protocol actions but may not create a second approval, routing, restore, or memory authority path.
 
 ## v1.0 architecture completion sequence
 
-The implementation architecture is frozen **before** formalization. Lean 4 must describe the released protocol rather than become another place to change it.
+**Architecture Phases 0–11 are complete.** The project is now in v1.0 release-candidate hardening. The implementation architecture is frozen before formalization; Lean 4 must describe the released protocol rather than become another place to change it.
 
-- [ ] Complete Phase 11.
 - [ ] Run the complete conformance/security/adversarial suite on the intended release commit.
 - [ ] Freeze public protocol names, schemas, canonical invariants, and migration rules for v1.0.
 - [ ] Freeze the v1 canonicalizer choice: retain `python-json-v0.1` with the Phase 10 conformance corpus or introduce an explicitly versioned JCS migration.
@@ -227,8 +232,9 @@ AI-CONTEXT v1.0 must not be declared until every item is checked:
 - [ ] Formalize derived indexes as non-authoritative projections and stale-source fingerprints as unusable retrieval state.
 - [ ] Formalize signed receipts as byte-integrity attestations that confer neither disclosure nor epistemic authority.
 - [ ] Formalize capability/tool transport metadata as non-authoritative with respect to canonical memory and routing permission.
+- [ ] Formalize UX/operator actions as orchestration only: confirmations, previews, and menu actions do not create protocol authority.
 - [ ] Formalize migration unknown-major rejection and extensions-only non-authoritative metadata.
-- [ ] Add finite reference models and counterexamples for invalid promotion, disclosure, migration, restore, derived-index, signature-authority, and tool-authority states.
+- [ ] Add finite reference models and counterexamples for invalid promotion, disclosure, migration, restore, derived-index, signature-authority, tool-authority, and UX-authority states.
 - [ ] Map each formal theorem to the corresponding protocol invariant, reference implementation behavior, and adversarial test.
 - [ ] Add Lean CI and require the archival theorem set to build without unresolved proof placeholders.
 - [ ] Produce a machine-readable theorem inventory for the archival record.
@@ -246,7 +252,7 @@ cryptographic library use != reimplementation of cryptographic proofs
 
 The archival surface should remain intentionally small and easy to cite: **three public uploads**.
 
-- [ ] Produce `AI-CONTEXT-v1.0.0-Overview.pdf`, a front-facing human technical report covering motivation, architecture, threat model, evidence, curation, routing, storage, restore/migration, derived indexes, interoperability/signed receipts, conformance, Lean results, limitations, reproducibility, and citation.
+- [ ] Produce `AI-CONTEXT-v1.0.0-Overview.pdf`, a front-facing human technical report covering motivation, architecture, threat model, evidence, curation, routing, storage, restore/migration, derived indexes, interoperability/signed receipts, UX, conformance, Lean results, limitations, reproducibility, and citation.
 - [ ] Produce `RELEASE-NOTES.md` as the machine-readable/human-readable release report containing tag, commit SHA, protocol/schema versions, phase status, theorem inventory summary, tests, limitations, artifact hashes, and reproduction commands.
 - [ ] Produce `AI-CONTEXT-1.0.0-source.zip` as an archival source bundle containing:
   - `reference-v1.0.0/` — exact source tree of the immutable GitHub `v1.0.0` tag;
