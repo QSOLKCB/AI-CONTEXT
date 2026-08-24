@@ -60,7 +60,7 @@ jobs:
           python tools/interop.py validate-fixtures
           fixtures/interoperability/conformance-v0.1.0.json
       - name: Build Rust interoperability verifier
-        run: cargo build --locked=false --manifest-path rust/ai-context-interop/Cargo.toml
+        run: cargo build --manifest-path rust/ai-context-interop/Cargo.toml
       - name: Validate capability manifest in Rust
         run: >-
           cargo run --quiet --manifest-path rust/ai-context-interop/Cargo.toml --
