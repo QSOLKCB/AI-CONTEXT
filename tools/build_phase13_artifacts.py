@@ -73,6 +73,8 @@ def assert_git_bindings() -> None:
 
 
 def export_reference_tree(dest: Path) -> None:
+    # Keep this helper self-contained: the staging root does not exist yet on a clean build.
+    dest.parent.mkdir(parents=True, exist_ok=True)
     tar_path = dest.parent / "reference.tar"
     with tar_path.open("wb") as fh:
         subprocess.run(["git", "archive", "--format=tar", REFERENCE_TAG], cwd=ROOT, check=True, stdout=fh)
