@@ -120,7 +120,7 @@ Routing is a read-only projection over canonical memory. Task selection and depe
 - [x] Cryptographic erasure/deletion receipt strategy.
 - [x] Recovery-key guidance that does not place keys inside AI-CONTEXT memory.
 
-**Phase 7 complete.** `tools/storage.py` defines a storage-backend protocol plus plaintext filesystem and encrypted-directory implementations. The encrypted reference backend uses AES-256-GCM from the maintained `cryptography` package, stores only non-secret SHA-256-derived key identifiers, keeps key files outside the store, authenticates protocol/algorithm/key/path metadata as AEAD associated data, and hides plaintext logical paths inside ciphertext. Rotation is journalled and normal access fails closed while a rotation is incomplete; object envelopes carry their actual key id so interrupted rotations can resume using the old and new external keys. The storage manifest records active/retired key history and replacement relationships. Primary ciphertext deletion emits a conservative receipt that explicitly does not claim key destruction; optional key-destruction receipts are labelled self-attested external actions rather than cryptographic proof. `docs/STORAGE.md` and `docs/ENCRYPTION-THREAT-MODELS.md` document filesystem/full-disk encryption, age, encrypted SQLite, hardware-backed custody, recovery guidance, metadata leakage, live-process limits, backup semantics, and cryptographic-erasure boundaries.
+**Phase 7 complete.** `tools/storage.py` defines a storage-backend protocol plus plaintext filesystem and encrypted-directory implementations. The encrypted reference backend uses AES-256-GCM from the maintained `cryptography` package, stores only non-secret SHA-256-derived key identifiers, keeps key files outside the store, authenticates protocol/algorithm/key/path/store metadata as AEAD associated data, and hides plaintext logical paths inside ciphertext. Rotation is journalled and normal access fails closed while a rotation is incomplete; object envelopes carry their actual key id so interrupted rotations can resume using the old and new external keys. The storage manifest records active/retired key history and replacement relationships. Primary ciphertext deletion emits a conservative receipt only after durable object removal and explicitly does not claim key destruction; optional key-destruction receipts are labelled self-attested external actions rather than cryptographic proof. `docs/STORAGE.md` and `docs/ENCRYPTION-THREAT-MODELS.md` document filesystem/full-disk encryption, age, encrypted SQLite, hardware-backed custody, recovery guidance, metadata leakage, live-process limits, backup semantics, and cryptographic-erasure boundaries.
 
 ### Encryption gate
 
@@ -128,15 +128,21 @@ Do not invent custom cryptography. The protocol may define envelopes and key ide
 
 ## Phase 8 — Restore and migration
 
-- [ ] Portable restore manifest.
-- [ ] Minimum continuity set.
-- [ ] Full working set.
-- [ ] Optional style/culture enrichment class with no factual authority.
-- [ ] Version migration manifest.
-- [ ] Unknown-major rejection.
-- [ ] Additive-compatible metadata rules.
-- [ ] Cold-start restore test with no provider memory dependency.
-- [ ] Cross-provider restore demonstration.
+- [x] Portable restore manifest.
+- [x] Minimum continuity set.
+- [x] Full working set.
+- [x] Optional style/culture enrichment class with no factual authority.
+- [x] Version migration manifest.
+- [x] Unknown-major rejection.
+- [x] Additive-compatible metadata rules.
+- [x] Cold-start restore test with no provider memory dependency.
+- [x] Cross-provider restore demonstration.
+
+**Phase 8 complete.** `tools/restore.py` exports deterministic portable `.aicr` archives with a hashed `AI-CONTEXT/RESTORE-MANIFEST`, explicit `AI-CONTEXT/MIGRATION-MANIFEST`, and declared payload hashes/byte lengths. The minimum continuity class restores workspace policy, canonical memory, profiles, routing policy, and existing curation policy; the full working set additionally preserves receipts, source evidence/staging, source snapshots/content indexes, and curation history while deliberately excluding raw vault exports and historical generated bundles. Restore validates archive paths, duplicates, symlinks, member limits, manifest/migration identity, artifact sizes and SHA-256 before publishing an atomically assembled destination workspace. Optional style/culture enrichment is presentation-only with `factual_authority = none` and restores outside canonical memory. Unknown major versions fail closed; additive metadata is restricted to non-authoritative `extensions`. Synthetic cold-start and cross-provider tests prove restored context requires no provider-side memory and can route the same canonical record set to distinct provider targets.
+
+### Restore security gate
+
+Restore reconstructs governed context; it never recreates a model identity, provider-side memory, hidden reasoning state, or chain of thought. Failed restores leave no partial destination. Migration transformations must be explicit, and additive metadata must not change artifact hashes, snapshot identity, curation authority, or disclosure permission.
 
 ## Phase 9 — Derived indexes
 
