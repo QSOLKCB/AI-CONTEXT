@@ -34,6 +34,7 @@ jobs:
           tools/validate_curation.py
           tools/routing.py
           tools/validate_routing.py
+          tools/validate_bundle_readonly.py
           tools/storage.py
           tools/restore_legacy.py
           tools/restore.py
@@ -53,14 +54,15 @@ jobs:
           tests/test_phase9_indexes.py
           tests/test_phase9_codex_hardening.py
           tests/test_phase10_interop.py
+          tests/test_phase10_codex_hardening.py
       - name: Unit, security, schema, provider-drift, evidence, curation, routing, storage, restore, index, and interoperability tests
         run: python -m unittest discover -s tests -v
       - name: Validate language-neutral interoperability fixture in Python
         run: >-
           python tools/interop.py validate-fixtures
           fixtures/interoperability/conformance-v0.1.0.json
-      - name: Build Rust interoperability verifier
-        run: cargo build --manifest-path rust/ai-context-interop/Cargo.toml
+      - name: Test Rust interoperability verifier
+        run: cargo test --manifest-path rust/ai-context-interop/Cargo.toml
       - name: Validate capability manifest in Rust
         run: >-
           cargo run --quiet --manifest-path rust/ai-context-interop/Cargo.toml --
