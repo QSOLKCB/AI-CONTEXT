@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/signed-bundle-receipt.schema.json",
+  "title": "AI-CONTEXT Signed Bundle Receipt",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "signature_algorithm", "signature_preimage", "authority", "bundle_sha256", "bundle_payload_sha256", "canonical_store_sha256", "signer_key_id", "public_key_b64", "signature_b64"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^signed-bundle-receipt\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/SIGNED-BUNDLE-RECEIPT"},
+    "schema_version": {"const": "0.1.0"},
+    "signature_algorithm": {"const": "Ed25519"},
+    "signature_preimage": {"const": "ai-context-bundle-sha256-nul-v1"},
+    "authority": {"const": "integrity-attestation-only"},
+    "bundle_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "bundle_payload_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "canonical_store_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "signer_key_id": {"type": "string", "pattern": "^ed25519\\.sha256:[0-9a-f]{64}$"},
+    "public_key_b64": {"type": "string", "minLength": 44, "maxLength": 44},
+    "signature_b64": {"type": "string", "minLength": 88, "maxLength": 88}
+  },
+  "additionalProperties": false
+}
