@@ -19,8 +19,11 @@ theorem frozenCommitBound :
 theorem frozenTreeBound :
     frozenTree = "2c0592cbd074d7596e70681cc5ed869d6b9b00e4" := rfl
 
-theorem sourceMaterialNotCanonicalMemory :
-    TrustZone.rawVault ≠ TrustZone.canonicalMemory := by decide
+/-- No importer has a direct raw-source-to-canonical-memory transition. -/
+theorem sourceMaterialNotCanonicalMemory (importer : SourceImporter) :
+    ¬ ImportTransition importer .rawVault .canonicalMemory := by
+  intro transition
+  cases transition
 
 theorem stagingNotCanonicalMemory :
     TrustZone.staging ≠ TrustZone.canonicalMemory := by decide
@@ -34,8 +37,10 @@ theorem localLLMCannotReview :
 theorem privateToPublicDowngradeRejected :
     canReclassify .private .public = false := by decide
 
-theorem secretMemoryExcluded :
-    canonicalEligible .secret = false := by decide
+/-- Secret-shaped material is ineligible regardless of the sensitivity label. -/
+theorem secretMemoryExcluded (sensitivity : Sensitivity) :
+    canonicalEligible sensitivity .secretShaped = false := by
+  cases sensitivity <;> rfl
 
 theorem approvalWithoutConflictClearBlocked :
     authorizesApplication {
@@ -132,5 +137,9 @@ example : usableIndex staleIndex = false := staleIndexUnusable
 example : transportDisclosureAuthority signatureEvidence = .none := signatureHasNoDisclosureAuthority
 example : transportEpistemicAuthority toolEvidence = .none := toolAdvertisementHasNoMemoryAuthority
 example : uxProtocolAuthority invalidUXAction = .none := uxActionHasNoProtocolAuthority invalidUXAction
+example : canonicalEligible .private .secretShaped = false := secretMemoryExcluded .private
+example (importer : SourceImporter) :
+    ¬ ImportTransition importer .rawVault .canonicalMemory :=
+  sourceMaterialNotCanonicalMemory importer
 
 end AIContextFormal
