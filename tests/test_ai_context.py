@@ -126,13 +126,13 @@ class AIContextTests(unittest.TestCase):
         for name, payload in [
             ("content-secret.json", {
                 "record_type": "preference",
-                "content": {"token": "sk-abcdefghijklmnopqrstuvwxyz123456"},
+                "content": {"token": "sk-abcdefghijklmnopqrstuvwxyz123456"},  # synthetic test-only secret-shaped fixture
                 "tags": [],
             }),
             ("notes-secret.json", {
                 "record_type": "preference",
                 "content": {"editor": "vim"},
-                "notes": "Bearer abcdefghijklmnopqrstuvwxyz123456",
+                "notes": "Bearer abcdefghijklmnopqrstuvwxyz123456",  # synthetic test-only secret-shaped fixture
                 "tags": [],
             }),
         ]:

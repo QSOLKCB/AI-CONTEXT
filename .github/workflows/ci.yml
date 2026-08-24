@@ -43,6 +43,7 @@ jobs:
           tools/interop.py
           tools/ux_legacy.py
           tools/ux.py
+          tools/release_audit.py
           tests/test_ai_context.py
           tests/test_phase2_conformance.py
           tests/test_schema_conformance.py
@@ -59,7 +60,8 @@ jobs:
           tests/test_phase10_codex_hardening.py
           tests/test_phase11_ux.py
           tests/test_phase11_codex_hardening.py
-      - name: Unit, security, schema, provider-drift, evidence, curation, routing, storage, restore, index, interoperability, and UX tests
+          tests/test_release_candidate.py
+      - name: Unit, security, schema, provider-drift, evidence, curation, routing, storage, restore, index, interoperability, UX, and release-candidate tests
         run: python -m unittest discover -s tests -v
       - name: Validate language-neutral interoperability fixture in Python
         run: >-
@@ -75,3 +77,7 @@ jobs:
         run: >-
           cargo run --quiet --manifest-path rust/ai-context-interop/Cargo.toml --
           validate-fixtures fixtures/interoperability/conformance-v0.1.0.json
+      - name: Audit tracked public release tree
+        run: >-
+          python tools/release_audit.py .
+          --receipt /tmp/ai-context-release-audit.json

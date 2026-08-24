@@ -43,7 +43,7 @@ These rules are normative for AI-assisted changes to this repository.
 - Derived graph projections may preserve explicit reference structure but must not guess semantic-key resolution or invent authority edges.
 - Search/vector results are candidate retrieval only and must return to canonical validation and Phase 6 routing before disclosure.
 - Derived indexes are rebuildable caches, not Phase 8 restore authority. Restore should rebuild them from restored canonical state rather than trusting old cache bytes.
-- Phase 10 signatures are transport/integrity attestations only. `SIGNATURE != DISCLOSURE AUTHORITY` and `SIGNATURE != EPISTEMIC AUTHORITY`.
+- Phase 10 signatures are transport/integrity attestations only. `SIGNATURE != DISCLOSURE AUTHORITY` and `SIGNATURE != EPISTEMIC_AUTHORITY`.
 - A public key embedded in a receipt proves only which key verifies the signature. It is not an independent trust anchor or identity proof.
 - Signing private keys remain external capabilities. Never place signing private keys in canonical memory, private workspaces, restore archives, capability manifests, repository fixtures, or this public repository.
 - Capability manifests describe supported surfaces and security interpretation only. `CAPABILITY CLAIM != PERMISSION`.
@@ -55,6 +55,10 @@ These rules are normative for AI-assisted changes to this repository.
 - UX review and canonical application remain separate authority events. A convenience prompt may not collapse approval and application into one write.
 - Operator-facing “promotion” means governed Phase 5 application of an already approved candidate; the legacy direct promote path remains disabled.
 - Non-interactive UX writes require explicit confirmation (`--yes`) before any mutation or archive creation.
+- The v1.0.0 release candidate retains `python-json-v0.1`; RFC 8785 JCS requires a later explicitly versioned migration and new language-neutral conformance vectors.
+- `release/v1-freeze.json` records the v1 protocol/schema/invariant/migration freeze. Do not silently change the frozen contract while still calling the result v1.0.0.
+- A v1.0.0 release candidate must pass `AI-CONTEXT/RELEASE-AUDIT` over the exact Git-tracked public tree. A passing audit is required before tagging.
+- `RELEASE-AUDIT` is a bounded tracked-tree claim, not proof about untracked local files, prior Git history, external backups/copies, or every possible semantic private fact.
 - Do not claim cross-runtime canonical byte equivalence beyond the explicit language-neutral conformance corpus.
 - Restore means reconstruction of curated context, not recreation of a model identity or hidden provider state.
 
@@ -67,7 +71,7 @@ These rules are normative for AI-assisted changes to this repository.
 - Storage logical paths must reject traversal and absolute-path escape.
 - Restore export must reject symlinked source artifacts; restore destinations must be assembled off-path and published only after complete validation.
 - New import adapters require synthetic fixtures and format-drift failure tests.
-- Changes to canonicalization, ids, schemas, sensitivity semantics, promotion rules, curation authority, mutation semantics, routing policy, dependency expansion, disclosure diagnostics, storage envelopes, key metadata, deletion/erasure semantics, restore manifests, continuity classes, migration rules, enrichment authority, index source fingerprints, index membership policy, index generator identity, signed-receipt preimages/algorithms, capability security semantics, or UX authority semantics require protocol/migration review.
+- Changes to canonicalization, ids, schemas, sensitivity semantics, promotion rules, curation authority, mutation semantics, routing policy, dependency expansion, disclosure diagnostics, storage envelopes, key metadata, deletion/erasure semantics, restore manifests, continuity classes, migration rules, enrichment authority, index source fingerprints, index membership policy, index generator identity, signed-receipt preimages/algorithms, capability security semantics, UX authority semantics, or the v1 freeze contract require protocol/migration review.
 - Curation write paths must be explicit and fail closed when approval, provenance, conflict resolution, or actor authority is ambiguous.
 - Routing must fail closed when a required dependency cannot be disclosed to the selected target.
 - Routing policy/profile normalization must reject unknown fields rather than ignoring policy typos.
@@ -84,6 +88,8 @@ These rules are normative for AI-assisted changes to this repository.
 - UX read-only functions must use read-only planners/readers and must not call bootstrap helpers that create or upgrade workspace state.
 - UX mutating functions should delegate to the established protocol CLIs/functions rather than duplicate curation, routing, import, or restore write semantics.
 - UX bundle previews must expose the exact routed payload and must not write preview bundle files unless the user explicitly requests a separate future feature.
+- Release auditing must derive the public-tree scope from Git-tracked entries, fail closed on tracked symlinks/private-runtime path classes, and keep synthetic secret-shaped test fixtures explicitly marked as synthetic at the fixture site.
+- Do not create `v1.0.0` from a pre-merge feature-branch SHA. Tag only the exact merged `main` commit after that commit passes the complete CI and release-audit gate.
 - Security-sensitive behavior must fail closed.
 
 ## Test expectations
@@ -149,4 +155,7 @@ At minimum preserve tests for:
 - exact bundle inspection cannot bypass provider/local routing policy and does not create a bundle file;
 - UX backup/restore delegates to Phase 8 and round-trips canonical continuity;
 - read-only TUI sessions leave workspace state unchanged;
+- the tracked public tree passes the schema-valid release audit with no findings;
+- private workspace paths, key/restore artifacts, generated archives, secret-shaped non-synthetic text, and tracked symlinks fail release audit;
+- the v1 freeze declaration retains `python-json-v0.1` and requires the release audit;
 - deletion/tombstone propagation once lifecycle mutation lands.
