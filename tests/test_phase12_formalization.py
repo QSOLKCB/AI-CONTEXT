@@ -5,6 +5,12 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+TOOLS = ROOT / "tools"
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+
+import validate_formalization  # noqa: E402
+
 VALIDATOR = ROOT / "tools" / "validate_formalization.py"
 TARGET = "53d7d69dfacecf6f8605f5b6a51b2c68ee66572a"
 TREE = "2c0592cbd074d7596e70681cc5ed869d6b9b00e4"
@@ -39,6 +45,19 @@ class Phase12FormalizationTests(unittest.TestCase):
         lakefile = (ROOT / "lakefile.lean").read_text(encoding="utf-8")
         self.assertNotIn("mathlib", lakefile.casefold())
         self.assertNotIn("require ", lakefile)
+
+    def test_theorem_discovery_ignores_comments_and_strings(self):
+        source = '''
+/- theorem blockBogus : True := by trivial
+   /- theorem nestedBogus : True := by trivial -/
+-/
+-- theorem lineBogus : True := by trivial
+def prose := "theorem stringBogus : True := by trivial"
+theorem realDeclaration : True := by trivial
+'''
+        semantic = validate_formalization.strip_lean_comments_and_strings(source)
+        self.assertEqual(validate_formalization.THEOREM_RE.findall(semantic), ["realDeclaration"])
+        self.assertIsNone(validate_formalization.FORBIDDEN_PROOF_RE.search(semantic))
 
 
 if __name__ == "__main__":
