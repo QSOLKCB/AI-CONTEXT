@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/vector-index.schema.json",
+  "title": "AI-CONTEXT Vector Index Projection",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "index_kind", "authority", "source_fingerprint", "generator", "records"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^vector-index\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/VECTOR-INDEX"},
+    "schema_version": {"const": "0.1.0"},
+    "index_kind": {"const": "vector"},
+    "authority": {"const": "derived-retrieval-only"},
+    "source_fingerprint": {"$ref": "derived-source-fingerprint.schema.json"},
+    "generator": {
+      "type": "object",
+      "required": ["id", "dimensions", "tokenization", "weights"],
+      "properties": {
+        "id": {"const": "sha256-token-bucket-count-v1"},
+        "dimensions": {"const": 256},
+        "tokenization": {"const": "unicode-casefold-v1"},
+        "weights": {"const": "integer-token-counts"}
+      },
+      "additionalProperties": false
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["memory_id", "token_count", "vector"],
+        "properties": {
+          "memory_id": {"type": "string", "minLength": 1},
+          "token_count": {"type": "integer", "minimum": 0},
+          "vector": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["dimension", "weight"],
+              "properties": {
+                "dimension": {"type": "integer", "minimum": 0, "maximum": 255},
+                "weight": {"type": "integer", "minimum": 1}
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
