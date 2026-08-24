@@ -90,6 +90,18 @@ python3 tools/ux.py import \
 
 **Importing does not automatically create memory.** It creates staged evidence and observations.
 
+The import result now exposes the newly staged handles directly:
+
+```json
+{
+  "observation_ids": [
+    "obs.sha256:..."
+  ]
+}
+```
+
+Copy the relevant observation ID into the next step. If an idempotent re-import adds no new row, `observation_ids` can be empty.
+
 ### 5. Propose, review, and apply a candidate
 
 ```bash
@@ -115,9 +127,9 @@ python3 tools/curation.py apply \
   --candidate candidate.sha256:...
 ```
 
-Only the final approved-and-applied record becomes canonical memory.
+Only the final approved-and-separately-applied record becomes canonical memory.
 
-### 6. Preview exactly what a model would receive
+### 6. Preview exactly what a local model would receive
 
 ```bash
 python3 tools/ux.py inspect-bundle \
@@ -129,7 +141,11 @@ python3 tools/ux.py inspect-bundle \
 
 This is read-only. A preview is not a disclosure event and does not create a bundle file.
 
-### 7. Build the actual task bundle
+`local-default` is a local-consumer policy and can permit private records. A preview or bundle built for `local-default` must **not** be forwarded to an external provider.
+
+### 7. Build the task bundle for the actual consumer
+
+For a local model or local agent:
 
 ```bash
 python3 tools/ai_context.py bundle \
@@ -137,10 +153,23 @@ python3 tools/ai_context.py bundle \
   --profile general \
   --target local-default \
   --task "continue work on the example project" \
-  --output /tmp/ai-context-bundle.json
+  --output /tmp/local-ai-context-bundle.json
 ```
 
-Give that file to the model or agent using whatever transport the consumer supports.
+Give that file only to the matching local consumer.
+
+For an external provider, route again using the provider target:
+
+```bash
+python3 tools/ai_context.py bundle \
+  ~/my-ai-context \
+  --profile general \
+  --target provider-default \
+  --task "continue work on the example project" \
+  --output /tmp/provider-ai-context-bundle.json
+```
+
+Transport does not re-run routing. The target used to build the bundle is therefore part of the disclosure decision.
 
 For the detailed walkthrough, including backup and restore, see [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md).
 
@@ -156,9 +185,11 @@ This is the normal path for users who just want private portable context memory.
 AI-CONTEXT
   private source ingestion
   evidence + provenance
-  curation / approval
+  curation proposal
+  explicit review
+  explicit application
   canonical memory
-  selective routing
+  selective routing for the actual consumer
   optional encrypted persistence
   portable restore
         |
@@ -166,7 +197,7 @@ AI-CONTEXT
   task-scoped context bundle
         |
         v
-  model / agent / provider
+  matching local model / agent / provider target
 ```
 
 You do **not** need:
@@ -193,6 +224,7 @@ PRIVATE CONTEXT                         PUBLIC QSOL CONTEXT
 AI-CONTEXT                              QSOL-SUBSTRATE
     |                                         |
     | Phase 6 routing                         | adapter / capsule / retrieval
+    | for actual consumer                     |
     v                                         v
 private task bundle                   public substrate payload
     |                                         |
@@ -231,9 +263,11 @@ These are invariants, not slogans:
 SOURCE MATERIAL != CANONICAL MEMORY
 CANDIDATE != MEMORY
 LLM SUGGESTION != REVIEW DECISION
+REVIEW APPROVAL != CANONICAL APPLICATION
 RELEVANT != PERMITTED
 DEPENDENCY != PERMISSION BYPASS
 ROUTED BUNDLE != CANONICAL MEMORY
+LOCAL TARGET != EXTERNAL PROVIDER TARGET
 ENCRYPTION AT REST != MEMORY AUTHORITY
 KEY ID != KEY MATERIAL
 RESTORE != MODEL IDENTITY
@@ -344,6 +378,8 @@ Routing considers:
 - dependency closure.
 
 Default target classes distinguish local models from external providers. A required dependency may bypass positive relevance selection only. It may **not** bypass disclosure permission.
+
+A routed bundle is valid for the target policy used to build it. Do not build with a local target and then forward the resulting bytes to an external provider. Re-route for the actual consumer.
 
 See [`docs/ROUTING.md`](docs/ROUTING.md).
 
