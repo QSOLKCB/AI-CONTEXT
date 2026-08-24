@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/index-manifest.schema.json",
+  "title": "AI-CONTEXT Derived Index Manifest",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "authority", "source_fingerprint", "artifacts"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^index-manifest\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/INDEX-MANIFEST"},
+    "schema_version": {"const": "0.1.0"},
+    "authority": {"const": "derived-retrieval-only"},
+    "source_fingerprint": {"$ref": "derived-source-fingerprint.schema.json"},
+    "artifacts": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["kind", "path", "artifact_id", "sha256", "bytes"],
+        "properties": {
+          "kind": {"enum": ["vector", "graph", "search"]},
+          "path": {"enum": ["vector.json", "graph.json", "search.json"]},
+          "artifact_id": {
+            "type": "string",
+            "pattern": "^(?:vector-index|graph-index|search-cache)\\.sha256:[0-9a-f]{64}$"
+          },
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "bytes": {"type": "integer", "minimum": 1}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
