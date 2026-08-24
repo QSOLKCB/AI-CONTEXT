@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/interop-conformance.schema.json",
+  "title": "AI-CONTEXT Interoperability Conformance Vectors",
+  "type": "object",
+  "required": ["protocol", "schema_version", "canonicalizer", "canonicalization_vectors", "signed_receipt_public_vector"],
+  "properties": {
+    "protocol": {"const": "AI-CONTEXT/INTEROP-CONFORMANCE"},
+    "schema_version": {"const": "0.1.0"},
+    "canonicalizer": {"const": "python-json-v0.1"},
+    "canonicalization_vectors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "input", "python_json_v0_1_utf8_hex", "sha256"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "input": {},
+          "python_json_v0_1_utf8_hex": {"type": "string", "pattern": "^(?:[0-9a-f]{2})+$"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "signed_receipt_public_vector": {
+      "type": "object",
+      "required": ["bundle_sha256", "bundle_payload_sha256", "canonical_store_sha256", "signer_key_id", "public_key_b64", "signature_b64", "signature_preimage_hex", "signature_preimage_sha256"],
+      "properties": {
+        "bundle_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "bundle_payload_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "canonical_store_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "signer_key_id": {"type": "string", "pattern": "^ed25519\\.sha256:[0-9a-f]{64}$"},
+        "public_key_b64": {"type": "string", "minLength": 44, "maxLength": 44},
+        "signature_b64": {"type": "string", "minLength": 88, "maxLength": 88},
+        "signature_preimage_hex": {"type": "string", "pattern": "^(?:[0-9a-f]{2})+$"},
+        "signature_preimage_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

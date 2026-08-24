@@ -43,19 +43,26 @@ These rules are normative for AI-assisted changes to this repository.
 - Derived graph projections may preserve explicit reference structure but must not guess semantic-key resolution or invent authority edges.
 - Search/vector results are candidate retrieval only and must return to canonical validation and Phase 6 routing before disclosure.
 - Derived indexes are rebuildable caches, not Phase 8 restore authority. Restore should rebuild them from restored canonical state rather than trusting old cache bytes.
-- Do not claim cross-runtime canonical byte equivalence unless a future canonicalizer contract proves it.
+- Phase 10 signatures are transport/integrity attestations only. `SIGNATURE != DISCLOSURE AUTHORITY` and `SIGNATURE != EPISTEMIC AUTHORITY`.
+- A public key embedded in a receipt proves only which key verifies the signature. It is not an independent trust anchor or identity proof.
+- Signing private keys remain external capabilities. Never place signing private keys in canonical memory, private workspaces, restore archives, capability manifests, repository fixtures, or this public repository.
+- Capability manifests describe supported surfaces and security interpretation only. `CAPABILITY CLAIM != PERMISSION`.
+- MCP/generic tool adapters are transport surfaces. `MCP TOOL != MEMORY AUTHORITY`; tool availability must never bypass curation or routing.
+- The Rust interoperability verifier is a read-only independent consumer. Cross-language agreement does not create a second canonical authority.
+- RFC 8785 JCS is evaluated but not active in v0.1. Never silently change `python-json-v0.1` identities while advertising the old canonicalizer.
+- Do not claim cross-runtime canonical byte equivalence beyond the explicit language-neutral conformance corpus.
 - Restore means reconstruction of curated context, not recreation of a model identity or hidden provider state.
 
 ## Code expectations
 
 - Keep the reference path dependency-light and local-first unless a dependency materially improves security.
 - For cryptography, never invent primitives. Use maintained reviewed libraries and document the security boundary.
-- Do not implement custom block modes, KDFs, MAC constructions, nonce schemes, key wrapping, or password encryption.
+- Do not implement custom block modes, KDFs, MAC constructions, nonce schemes, key wrapping, password encryption, or signature algorithms.
 - Archive readers must reject path traversal, duplicate members, unsafe symlinks, and resource-limit violations.
 - Storage logical paths must reject traversal and absolute-path escape.
 - Restore export must reject symlinked source artifacts; restore destinations must be assembled off-path and published only after complete validation.
 - New import adapters require synthetic fixtures and format-drift failure tests.
-- Changes to canonicalization, ids, schemas, sensitivity semantics, promotion rules, curation authority, mutation semantics, routing policy, dependency expansion, disclosure diagnostics, storage envelopes, key metadata, deletion/erasure semantics, restore manifests, continuity classes, migration rules, enrichment authority, index source fingerprints, index membership policy, or index generator identity require protocol/migration review.
+- Changes to canonicalization, ids, schemas, sensitivity semantics, promotion rules, curation authority, mutation semantics, routing policy, dependency expansion, disclosure diagnostics, storage envelopes, key metadata, deletion/erasure semantics, restore manifests, continuity classes, migration rules, enrichment authority, index source fingerprints, index membership policy, index generator identity, signed-receipt preimages/algorithms, or capability security semantics require protocol/migration review.
 - Curation write paths must be explicit and fail closed when approval, provenance, conflict resolution, or actor authority is ambiguous.
 - Routing must fail closed when a required dependency cannot be disclosed to the selected target.
 - Routing policy/profile normalization must reject unknown fields rather than ignoring policy typos.
@@ -65,6 +72,10 @@ These rules are normative for AI-assisted changes to this repository.
 - Migration manifests must record explicit source/target versions and may not hide payload transformations.
 - Derived-index validation must recompute the current canonical source fingerprint and reject stale projections before query use.
 - Derived index builders must be deterministic for the declared generator/canonicalizer and must not mutate canonical memory, curation, routing policy, or evidence authority.
+- Bundle signing must validate the bundle's existing canonical payload hash before signing and bind the exact bundle-file SHA-256.
+- Signed-receipt verification must distinguish embedded-key cryptographic validity from an independently supplied public-key trust anchor.
+- Signing key creation must use exclusive-create semantics and must never overwrite an existing key path.
+- MCP/tool adapter examples must use structured arguments and remain read-only unless a future authority-reviewed tool contract explicitly says otherwise.
 - Security-sensitive behavior must fail closed.
 
 ## Test expectations
@@ -116,4 +127,11 @@ At minimum preserve tests for:
 - tombstoned records disappear from rebuilt retrieval projections while canonical history remains;
 - derived-index source fingerprints change when canonical state changes;
 - Phase 9 schemas conform to generated reference projections;
+- capability manifests cannot grant signature-based disclosure or epistemic authority;
+- language-neutral canonicalization/signature vectors validate in Python and Rust;
+- signed receipts verify exact bundle bytes and reject byte tampering;
+- an incorrect external public-key trust anchor is rejected;
+- signing private keys require restrictive permissions on POSIX;
+- MCP/generic tool examples expose no direct canonical-memory or approval write path;
+- RFC 8785 JCS remains explicitly non-adopted unless a versioned migration changes that decision;
 - deletion/tombstone propagation once lifecycle mutation lands.

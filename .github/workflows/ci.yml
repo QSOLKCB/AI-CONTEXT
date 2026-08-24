@@ -15,11 +15,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install conformance and storage test dependencies
+      - name: Install conformance, storage, and signing test dependencies
         run: >-
           python -m pip install --disable-pip-version-check
           -r requirements-dev.txt
           -r requirements-storage.txt
+          -r requirements-signing.txt
       - name: Syntax check
         run: >-
           python -m py_compile
@@ -33,11 +34,13 @@ jobs:
           tools/validate_curation.py
           tools/routing.py
           tools/validate_routing.py
+          tools/validate_bundle_readonly.py
           tools/storage.py
           tools/restore_legacy.py
           tools/restore.py
           tools/indexes_legacy.py
           tools/indexes.py
+          tools/interop.py
           tests/test_ai_context.py
           tests/test_phase2_conformance.py
           tests/test_schema_conformance.py
@@ -50,5 +53,21 @@ jobs:
           tests/test_phase8_codex_hardening.py
           tests/test_phase9_indexes.py
           tests/test_phase9_codex_hardening.py
-      - name: Unit, security, schema, provider-drift, evidence, curation, routing, storage, restore, and index tests
+          tests/test_phase10_interop.py
+          tests/test_phase10_codex_hardening.py
+      - name: Unit, security, schema, provider-drift, evidence, curation, routing, storage, restore, index, and interoperability tests
         run: python -m unittest discover -s tests -v
+      - name: Validate language-neutral interoperability fixture in Python
+        run: >-
+          python tools/interop.py validate-fixtures
+          fixtures/interoperability/conformance-v0.1.0.json
+      - name: Test Rust interoperability verifier
+        run: cargo test --manifest-path rust/ai-context-interop/Cargo.toml
+      - name: Validate capability manifest in Rust
+        run: >-
+          cargo run --quiet --manifest-path rust/ai-context-interop/Cargo.toml --
+          capabilities fixtures/interoperability/capability-manifest.python.json
+      - name: Validate interoperability fixture in Rust
+        run: >-
+          cargo run --quiet --manifest-path rust/ai-context-interop/Cargo.toml --
+          validate-fixtures fixtures/interoperability/conformance-v0.1.0.json

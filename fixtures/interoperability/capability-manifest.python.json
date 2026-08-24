@@ -1,0 +1,42 @@
+{
+  "id": "capability.sha256:0ba28975178b357050c4edc0ebd1b08a929d9d600003b5d341356814521fe4c5",
+  "protocol": "AI-CONTEXT/CAPABILITY-MANIFEST",
+  "schema_version": "0.1.0",
+  "implementation": {
+    "id": "ai-context-python-reference",
+    "language": "python",
+    "protocol_version": "0.1.0"
+  },
+  "canonicalization": {
+    "active": "python-json-v0.1",
+    "rfc8785_jcs": "evaluated-not-adopted",
+    "migration_required_for_change": true
+  },
+  "features": [
+    "source-import",
+    "source-evidence",
+    "human-policy-curation",
+    "selective-routing",
+    "encrypted-storage",
+    "portable-restore",
+    "derived-indexes",
+    "signed-bundle-receipts"
+  ],
+  "signed_bundle_receipts": {
+    "algorithm": "Ed25519",
+    "preimage": "ai-context-bundle-sha256-nul-v1",
+    "authority": "integrity-attestation-only",
+    "embedded_public_key": true,
+    "external_trust_anchor_optional": true
+  },
+  "consumer_rules": {
+    "provider_memory_dependency": "none",
+    "index_results_require_routing": true,
+    "signature_grants_disclosure": false,
+    "signature_grants_epistemic_authority": false
+  },
+  "adapter_examples": {
+    "mcp": "examples/mcp/",
+    "generic_tool": "examples/tool-adapter.json"
+  }
+}
