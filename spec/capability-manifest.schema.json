@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsolkcb.github.io/AI-CONTEXT/spec/capability-manifest.schema.json",
+  "title": "AI-CONTEXT Capability Manifest",
+  "type": "object",
+  "required": ["id", "protocol", "schema_version", "implementation", "canonicalization", "features", "signed_bundle_receipts", "consumer_rules", "adapter_examples"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^capability\\.sha256:[0-9a-f]{64}$"},
+    "protocol": {"const": "AI-CONTEXT/CAPABILITY-MANIFEST"},
+    "schema_version": {"const": "0.1.0"},
+    "implementation": {
+      "type": "object",
+      "required": ["id", "language", "protocol_version"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "language": {"type": "string", "minLength": 1},
+        "protocol_version": {"const": "0.1.0"}
+      },
+      "additionalProperties": false
+    },
+    "canonicalization": {
+      "type": "object",
+      "required": ["active", "rfc8785_jcs", "migration_required_for_change"],
+      "properties": {
+        "active": {"const": "python-json-v0.1"},
+        "rfc8785_jcs": {"const": "evaluated-not-adopted"},
+        "migration_required_for_change": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    "features": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "signed_bundle_receipts": {
+      "type": "object",
+      "required": ["algorithm", "preimage", "authority", "embedded_public_key", "external_trust_anchor_optional"],
+      "properties": {
+        "algorithm": {"const": "Ed25519"},
+        "preimage": {"const": "ai-context-bundle-sha256-nul-v1"},
+        "authority": {"const": "integrity-attestation-only"},
+        "embedded_public_key": {"const": true},
+        "external_trust_anchor_optional": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    "consumer_rules": {
+      "type": "object",
+      "required": ["provider_memory_dependency", "index_results_require_routing", "signature_grants_disclosure", "signature_grants_epistemic_authority"],
+      "properties": {
+        "provider_memory_dependency": {"const": "none"},
+        "index_results_require_routing": {"const": true},
+        "signature_grants_disclosure": {"const": false},
+        "signature_grants_epistemic_authority": {"const": false}
+      },
+      "additionalProperties": false
+    },
+    "adapter_examples": {
+      "type": "object",
+      "required": ["mcp", "generic_tool"],
+      "properties": {
+        "mcp": {"type": "string", "minLength": 1},
+        "generic_tool": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
