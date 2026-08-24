@@ -12,7 +12,7 @@ This pull request establishes:
 
 1. the v1 public protocol/schema/invariant freeze declaration in `release/v1-freeze.json`;
 2. the canonicalizer decision to retain `python-json-v0.1` for v1.0.0;
-3. a tracked-tree release audit in `tools/release_audit.py`;
+3. an exact-commit tracked-tree release audit in `tools/release_audit.py`;
 4. a CI gate that runs the complete Python/Rust/conformance suite and the release audit;
 5. the v1.0.0 GitHub release notes.
 
@@ -54,18 +54,21 @@ or preserve a machine-readable receipt outside the repository:
 python3 tools/release_audit.py . --receipt /tmp/ai-context-release-audit.json
 ```
 
-The audit starts from `git ls-files`, not from an unrestricted filesystem walk. Its claim is therefore about the exact **tracked public Git tree** intended for release.
+The audit first resolves `git rev-parse --show-toplevel`, then binds the receipt to the exact 40-hex `HEAD` commit. It enumerates that commit with `git ls-tree` and reads the corresponding Git blob bytes with `git cat-file`; it does **not** trust mutable working-tree bytes or an invocation subdirectory. A dirty checkout therefore cannot sanitize an unsafe committed blob, and running the command from `docs/` still audits the complete repository tree.
 
 It rejects tracked:
 
 - top-level private workspace state such as `workspace/`, `vault/`, `staging/`, `memory/`, `curation/`, `routing/`, `receipts/`, and `indexes/`;
 - `.aicr`, private-key, credential-store, private database, and private-suffix artifacts;
 - raw/generated ZIPs outside the explicitly synthetic fixture tree;
-- generated archives and local build/cache directories;
-- tracked symlinks;
-- common secret/token/private-key byte patterns.
+- common generated archive formats including tar/gzip/xz/bzip2/rar/7z variants;
+- generated `build/`, `dist/`, `cache/`, `.cache/`, virtual-environment, package-cache, and runtime directories;
+- tracked symlinks and submodules;
+- common secret/token/private-key byte patterns, including inside NUL-containing binary blobs.
 
-Synthetic test/provider-drift fixtures remain allowed. Secret-shaped strings inside tests/fixtures are ignored only when the same line explicitly marks them as synthetic/example/dummy/fake/placeholder/redacted/test material.
+Secret-shaped strings inside `tests/` or `fixtures/` are exempted only when the same source line carries a narrow explicit annotation such as `synthetic test-only`. Ordinary identifiers such as `test_key` are not exemptions.
+
+Tracked blobs larger than the configured secret-scan resource limit fail closed with an audit finding rather than being silently treated as clean.
 
 ## Audit claim
 
@@ -75,7 +78,7 @@ A successful receipt states:
 no-forbidden-private-or-runtime-artifacts-detected-in-tracked-tree
 ```
 
-This is intentionally narrower than a universal deletion/privacy claim. It demonstrates that the release tree being tagged contains no detected private raw input, credentials, storage/signing keys, recovery material, user workspace state, or generated runtime artifacts under the declared audit policy.
+This is intentionally narrower than a universal deletion/privacy claim. It demonstrates that the exact commit tree named by the receipt contains no detected private raw input, credentials, storage/signing keys, recovery material, user workspace state, or generated runtime artifacts under the declared audit policy.
 
 It does **not** claim that:
 
